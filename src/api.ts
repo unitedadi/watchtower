@@ -44,6 +44,7 @@ export interface SummaryResponse {
   to: string;
   projects: ProjectSummary[];
   reasons: ReasonRow[];
+  missing_journeys?: number;
 }
 
 export interface SparklinePoint {

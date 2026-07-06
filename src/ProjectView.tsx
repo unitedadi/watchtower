@@ -68,6 +68,9 @@ export function ProjectView({ date }: { date: string }) {
           {totals.active > 0 && <Pill cls="info" big>{totals.active} active</Pill>}
           {totals.friction > 0 && <Pill cls="yellow" big>{totals.friction} green-with-friction</Pill>}
           {totals.unclassified > 0 && <Pill cls="red" big>{totals.unclassified} UNCLASSIFIED</Pill>}
+          {(summary?.missing_journeys ?? 0) > 0 && (
+            <Pill cls="red" big>{summary!.missing_journeys} intents unseen</Pill>
+          )}
         </div>
       )}
 

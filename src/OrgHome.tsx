@@ -60,6 +60,18 @@ export function OrgHome({ date }: { date: string }) {
     <>
       {error && <div className="error-banner">Cannot reach the telemetry API: {error}</div>}
 
+      {(summary?.missing_journeys ?? 0) > 0 && (
+        <div className="card attention" style={{ marginBottom: 16 }}>
+          <h3>Capture gap</h3>
+          <div className="small">
+            <Pill cls="red">{summary!.missing_journeys}</Pill>{" "}
+            checkout intents created today produced <b>zero</b> client events — unopened
+            links are normal in small numbers; a spike means tracking itself is broken
+            and silence cannot be trusted.
+          </div>
+        </div>
+      )}
+
       {attention.length > 0 && (
         <div className="card attention" style={{ marginBottom: 16 }}>
           <h3>Needs attention</h3>
