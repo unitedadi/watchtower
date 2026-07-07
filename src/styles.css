@@ -184,6 +184,18 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 .promise .chip { margin-top: 2px; min-width: 96px; justify-content: center; }
 .promise .t { font-weight: 600; font-size: 13.5px; }
 .promise .hl { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+.case-promise { gap: 12px; }
+.promise-actions {
+  display: flex;
+  flex: 0 0 108px;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.promise-actions .casecopy { width: 100%; }
+.promise-actions .casebtn { width: 100%; }
+.promise-actions .chip { margin-top: 0; }
+.promise-main { flex: 1; min-width: 0; }
 .reason-row {
   padding: 14px 16px 15px;
   border-bottom: 1px solid var(--line);
@@ -203,6 +215,13 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 }
 .reason-label { font-size: 13px; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
 .reason-code { overflow-wrap: anywhere; }
+.casecopy {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
 .casebtn {
   border: 1px solid rgba(122, 167, 247, 0.72);
   background: var(--accent);
@@ -218,6 +237,24 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 }
 .casebtn:hover { border-color: rgba(122, 167, 247, 0.95); background: #9abcf8; }
 .casebtn:active { transform: scale(0.97); }
+.case-draft {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(520px, calc(100vw - 48px));
+  height: 220px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  resize: vertical;
+}
 .reason-count {
   font-family: var(--mono);
   font-size: 11px;
@@ -332,6 +369,15 @@ td.num { text-align: right; }
 /* ---------- layout grids ---------- */
 .cols { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; align-items: start; }
 @media (max-width: 1020px) { .cols { grid-template-columns: 1fr; } }
+@media (max-width: 640px) {
+  .case-promise { flex-direction: column; }
+  .promise-actions {
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+  }
+  .promise-actions .casebtn { width: auto; }
+}
 .stack { display: grid; gap: 16px; }
 
 /* ---------- org tiles ---------- */

@@ -286,20 +286,153 @@ function buildProblemCasePrompt(params: { project: string; range: Range; date: s
   ].join("\n");
 }
 
+function buildPromiseCasePrompt(params: {
+  project: string;
+  range: Range;
+  date: string;
+  promise: PromiseVerdictRow;
+}): string {
+  const { project, range, date, promise } = params;
+  const samples = promise.evidence.samples ?? [];
+  const notes = promise.evidence.notes ?? [];
+  const notGreen = promise.status !== "held";
+  const checkedAt = promise.checked_at ? `Checked at: ${promise.checked_at}` : null;
+
+  return [
+    "You are Codex. Investigate and fix this Watchtower promise.",
+    "",
+    `Product: ${project}`,
+    `Selected window: ${range} (${date}, Asia/Dubai day)`,
+    `Promise: ${promise.title}`,
+    `Promise id: ${promise.promise_id}`,
+    `Statement: ${promise.statement}`,
+    `Status: ${promise.status}`,
+    `Headline: ${promise.headline}`,
+    checkedAt,
+    "",
+    "Why this matters:",
+    notGreen
+      ? `- Watchtower marked this promise ${promise.status}. Treat the product as not-green until the cause is fixed or deliberately reclassified with stronger evidence.`
+      : "- Watchtower marked this promise held. Use this case to verify the evidence is still strong enough to keep it green.",
+    "",
+    "Evidence facts:",
+    JSON.stringify(promise.evidence.facts ?? {}, null, 2),
+    "",
+    "Evidence notes:",
+    notes.length > 0 ? notes.map((note) => `- ${note}`).join("\n") : "No notes attached.",
+    "",
+    "Sample journeys:",
+    samples.length > 0 ? samples.map((sample, index) => `${index + 1}. ${sample}`).join("\n") : "No sample journeys attached.",
+    "",
+    "Fix brief:",
+    "- Open the Watchtower/backend/checkout code that produces this promise verdict and trace the evidence fields.",
+    "- If the customer experience is genuinely broken, patch the smallest product or backend path.",
+    "- If the verdict is stale, vague, or missing receipts, improve the classifier/evidence so future cases are unmissable.",
+    "- Verify by rerunning this promise window and confirming the status, headline, and evidence changed as intended.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Fall through to the legacy selection path. Some embedded browsers expose
+      // navigator.clipboard but reject writes even after a click.
+    }
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "true");
+  textArea.style.position = "fixed";
+  textArea.style.left = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textArea);
+  return copied;
+}
+
 function PrepareCaseButton({ prompt }: { prompt: string }) {
-  const [done, setDone] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "ready">("idle");
   return (
-    <button
-      className="casebtn"
-      onClick={(e) => {
-        e.stopPropagation();
-        void navigator.clipboard?.writeText(prompt);
-        setDone(true);
-        window.setTimeout(() => setDone(false), 1400);
-      }}
-    >
-      {done ? "case copied" : "fix my case"}
-    </button>
+    <span className="casecopy">
+      <button
+        className="casebtn"
+        onClick={async (e) => {
+          e.stopPropagation();
+          const copied = await copyTextToClipboard(prompt);
+          if (!copied) {
+            setState("ready");
+            return;
+          }
+          setState("copied");
+          window.setTimeout(() => setState("idle"), 1400);
+        }}
+      >
+        {state === "copied" ? "case copied" : state === "ready" ? "case ready" : "fix my case"}
+      </button>
+      {state === "ready" && (
+        <textarea
+          className="case-draft"
+          readOnly
+          aria-label="case prompt"
+          value={prompt}
+          onClick={(e) => {
+            e.stopPropagation();
+            e.currentTarget.select();
+          }}
+          onFocus={(e) => e.currentTarget.select()}
+        />
+      )}
+    </span>
+  );
+}
+
+function PromiseEvidenceRow({
+  promise,
+  project,
+  range,
+  date,
+  onOpen,
+}: {
+  promise: PromiseVerdictRow;
+  project: string;
+  range: Range;
+  date: string;
+  onOpen: (journeyId: string) => void;
+}) {
+  const samples = promise.evidence.samples ?? [];
+  const casePrompt = buildPromiseCasePrompt({ project, range, date, promise });
+  return (
+    <div className="promise case-promise">
+      <div className="promise-actions">
+        <PrepareCaseButton prompt={casePrompt} />
+        <Chip cls={PROMISE_STATUS_CLS[promise.status]}>{promise.status}</Chip>
+      </div>
+      <div className="promise-main">
+        <div className="t">{promise.title}</div>
+        <div className="hl">{promise.headline}</div>
+        {samples.length > 0 && (
+          <div>
+            {samples.slice(0, 5).map((sample) => (
+              <button key={sample} className="receipt" onClick={() => onOpen(sample)}>
+                {sample.slice(0, 26)}
+              </button>
+            ))}
+          </div>
+        )}
+        <details className="meta">
+          <summary>evidence</summary>
+          <pre>{JSON.stringify({ statement: promise.statement, ...promise.evidence }, null, 2)}</pre>
+        </details>
+      </div>
+    </div>
   );
 }
 
@@ -502,26 +635,14 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
             )}
             {promises === null && range !== "all" && <Skeleton rows={5} />}
             {promises?.map((p) => (
-              <div key={p.promise_id} className="promise">
-                <Chip cls={PROMISE_STATUS_CLS[p.status]}>{p.status}</Chip>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="t">{p.title}</div>
-                  <div className="hl">{p.headline}</div>
-                  {(p.evidence.samples ?? []).length > 0 && (
-                    <div>
-                      {p.evidence.samples!.slice(0, 5).map((s) => (
-                        <button key={s} className="receipt" onClick={() => setOpen(s)}>
-                          {s.slice(0, 26)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <details className="meta">
-                    <summary>evidence</summary>
-                    <pre>{JSON.stringify({ statement: p.statement, ...p.evidence }, null, 2)}</pre>
-                  </details>
-                </div>
-              </div>
+              <PromiseEvidenceRow
+                key={p.promise_id}
+                promise={p}
+                project={project}
+                range={range}
+                date={date}
+                onOpen={setOpen}
+              />
             ))}
             {promises !== null && promises.length === 0 && (
               <div className="empty">no promise catalog answered for this backend</div>
