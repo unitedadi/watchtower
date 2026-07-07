@@ -62,11 +62,11 @@ export function ProjectView({ date }: { date: string }) {
 
       {totals && (
         <div className="counts" style={{ marginBottom: 16 }}>
-          <Pill cls="green" big>{totals.green} green</Pill>
+          <Pill cls="green" big>{totals.green - totals.friction} green</Pill>
+          {totals.friction > 0 && <Pill cls="yellow" big>{totals.friction} green-with-friction</Pill>}
           <Pill cls="yellow" big>{totals.yellow} yellow</Pill>
           <Pill cls="red" big>{totals.red} red</Pill>
           {totals.active > 0 && <Pill cls="info" big>{totals.active} active</Pill>}
-          {totals.friction > 0 && <Pill cls="yellow" big>{totals.friction} green-with-friction</Pill>}
           {totals.unclassified > 0 && <Pill cls="red" big>{totals.unclassified} UNCLASSIFIED</Pill>}
           {(summary?.missing_journeys ?? 0) > 0 && (
             <Pill cls="red" big>{summary!.missing_journeys} intents unseen</Pill>

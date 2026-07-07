@@ -87,18 +87,20 @@ export function OrgHome({ date }: { date: string }) {
 
       <div className="grid">
         {(summary?.projects ?? []).map((p) => {
+          const cleanGreen = p.green - p.friction;
           const total = p.green + p.yellow + p.red;
-          const rate = total ? Math.round((p.green / total) * 100) : null;
+          const rate = total ? Math.round((cleanGreen / total) * 100) : null;
           return (
             <Link key={p.project} to={`/p/${p.project}?date=${date}`} className="card tile">
               <div className="name">
                 {PROJECT_LABELS[p.project] ?? p.project}
                 {rate !== null && (
-                  <span className={`muted small`}>{rate}% green</span>
+                  <span className={`muted small`}>{rate}% clean green</span>
                 )}
               </div>
               <div className="counts">
-                <Pill cls="green">{p.green} green</Pill>
+                <Pill cls="green">{cleanGreen} green</Pill>
+                {p.friction > 0 && <Pill cls="yellow">{p.friction} green w/ friction</Pill>}
                 <Pill cls="yellow">{p.yellow} yellow</Pill>
                 <Pill cls="red">{p.red} red</Pill>
                 {p.active > 0 && <Pill cls="info">{p.active} active</Pill>}
