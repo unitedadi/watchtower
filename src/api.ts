@@ -70,6 +70,9 @@ export interface JourneyRow {
 
 export interface JourneyEvent {
   id: number;
+  project?: string;
+  session_id?: string;
+  journey_id?: string;
   event_type: string;
   name: string;
   cls: "green" | "yellow" | "red" | "info";
@@ -77,9 +80,15 @@ export interface JourneyEvent {
   http_status: number | null;
   duration_ms: number | null;
   path: string | null;
+  error_code?: string | null;
+  api?: boolean | null;
+  customer_id?: string | null;
+  seller_id?: string | null;
+  classifier_version?: number;
   meta: Record<string, unknown>;
   surface: string | null;
   vertical: string | null;
+  client_ts?: string | null;
   created_at: string;
 }
 

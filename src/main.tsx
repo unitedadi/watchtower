@@ -14,13 +14,19 @@ function Topbar({ date, onDate }: { date: string; onDate: (d: string) => void })
   const onProjectPage = location.pathname.startsWith("/p/");
   return (
     <div className="topbar">
-      <h1>
-        <Link to={`/?date=${date}`}>Watchtower</Link>
-      </h1>
-      {onProjectPage && project && <span className="crumb">/ {project}</span>}
+      <Link to={`/?date=${date}`} className="wordmark">
+        <span className="beacon" />
+        WATCHTOWER
+      </Link>
+      {onProjectPage && project && (
+        <span className="crumb">
+          / <b>{project}</b>
+        </span>
+      )}
       <span className="spacer" />
       <input type="date" value={date} max={todayDubai()} onChange={(e) => onDate(e.target.value)} />
       <input
+        className="api-field"
         type="text"
         value={api}
         title="Telemetry API base"
