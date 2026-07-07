@@ -1,5 +1,41 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import lottie from "lottie-web/build/player/lottie_light";
+
+import eyesAnimation from "./assets/eyes.json";
 import type { SparklinePoint } from "./api";
+
+// The Watchtower mark: a pair of eyes that blink and glance around.
+// The composition is a 2000x2000 canvas with large empty margins, so after
+// load the svg viewBox is cropped to the rendered bounding box.
+export function EyesMark({ height = 26 }: { height?: number }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const anim = lottie.loadAnimation({
+      container: el,
+      renderer: "svg",
+      loop: true,
+      autoplay: true,
+      animationData: eyesAnimation as unknown as object,
+    });
+    const crop = () => {
+      const svg = el.querySelector("svg");
+      if (!svg) return;
+      try {
+        const b = (svg as unknown as SVGGraphicsElement).getBBox();
+        const pad = b.height * 0.08;
+        svg.setAttribute("viewBox", `${b.x - pad} ${b.y - pad} ${b.width + pad * 2} ${b.height + pad * 2}`);
+        svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+      } catch {
+        // getBBox can throw pre-layout; the uncropped mark still renders
+      }
+    };
+    anim.addEventListener("DOMLoaded", crop);
+    return () => anim.destroy();
+  }, []);
+  return <div ref={ref} style={{ height, width: height * 1.9, display: "block" }} aria-hidden="true" />;
+}
 
 export function Chip({ cls, children }: { cls: string; children: React.ReactNode }) {
   return (

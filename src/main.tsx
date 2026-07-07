@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { apiBase, setApiBase, todayDubai } from "./api";
+import { EyesMark } from "./ui";
 import { OrgHome } from "./OrgHome";
 import { ProjectView } from "./ProjectView";
 import "./styles.css";
@@ -15,7 +16,7 @@ function Topbar({ date, onDate }: { date: string; onDate: (d: string) => void })
   return (
     <div className="topbar">
       <Link to={`/?date=${date}`} className="wordmark">
-        <span className="beacon" />
+        <EyesMark />
         WATCHTOWER
       </Link>
       {onProjectPage && project && (
