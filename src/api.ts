@@ -149,6 +149,22 @@ export function fetchPromises(date: string, product = "checkout-web"): Promise<{
   return get(`/telemetry/promises?${q}`);
 }
 
+export interface Finding {
+  id: string;
+  severity: "critical" | "high" | "medium" | "low";
+  title: string;
+  root_cause: string;
+  impact: string;
+  suggested_fix: string;
+  affected: number;
+  evidence: string[];
+}
+
+export function fetchFindings(range: Range, date: string, product = "checkout-web"): Promise<{ findings: Finding[] }> {
+  const q = new URLSearchParams({ product, ...windowParams(range, date) });
+  return get(`/telemetry/findings?${q}`);
+}
+
 export function todayDubai(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
 }

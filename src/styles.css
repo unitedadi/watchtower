@@ -113,6 +113,27 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 }
 .panel-h .meta { margin-left: auto; color: var(--faint); font-family: var(--mono); font-weight: 400; letter-spacing: 0; text-transform: none; }
 
+/* ---------- findings (diagnoses: problem + fix) ---------- */
+.findings { border-color: var(--line-strong); }
+.finding { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.finding:last-child { border-bottom: none; }
+.finding-head { display: flex; align-items: center; gap: 10px; }
+.finding-head .chip { min-width: 74px; justify-content: center; }
+.finding-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; flex: 1; min-width: 0; }
+.finding-affected { color: var(--faint); font-size: 11.5px; flex: none; }
+.finding-body { margin-top: 8px; padding-left: 84px; }
+@media (max-width: 720px) { .finding-body { padding-left: 0; } }
+.finding-body p { margin: 0 0 6px; font-size: 13px; line-height: 1.6; color: var(--muted); }
+.finding-cause { color: var(--ink); }
+.finding .fl {
+  display: inline-block; min-width: 52px; font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint);
+  margin-right: 8px; vertical-align: 1px;
+}
+.finding-fix { color: var(--ink); }
+.finding-fix .fl { color: var(--green); }
+.finding-ev { margin-top: 8px; display: flex; align-items: baseline; flex-wrap: wrap; }
+
 /* ---------- headline (plain-English "what happened") ---------- */
 .headline {
   background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);

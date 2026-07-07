@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
+  fetchFindings,
   fetchJourneyEvents,
   fetchJourneys,
   fetchPromises,
   fetchSummary,
   windowDays,
+  type Finding,
   type Range,
   type JourneyEvent,
   type JourneyRow,
@@ -76,6 +78,47 @@ function summarizeJourneys(journeys: JourneyRow[]): Headline {
   return { total: journeys.length, completed, broke, walls, bounced };
 }
 
+const SEVERITY_CLS: Record<Finding["severity"], string> = {
+  critical: "red",
+  high: "red",
+  medium: "yellow",
+  low: "info",
+};
+
+function FindingRow({ f, onOpen }: { f: Finding; onOpen: (j: string) => void }) {
+  return (
+    <div className="finding">
+      <div className="finding-head">
+        <span className={`chip ${SEVERITY_CLS[f.severity]}`}>
+          <span className="d" />
+          {f.severity}
+        </span>
+        <span className="finding-title">{f.title}</span>
+        <span className="finding-affected mono">{f.affected} affected</span>
+      </div>
+      <div className="finding-body">
+        <p className="finding-cause">{f.root_cause}</p>
+        <p className="finding-impact">
+          <span className="fl">impact</span> {f.impact}
+        </p>
+        <p className="finding-fix">
+          <span className="fl">fix</span> {f.suggested_fix}
+        </p>
+        {f.evidence.length > 0 && (
+          <div className="finding-ev">
+            <span className="fl">evidence</span>
+            {f.evidence.map((j) => (
+              <button key={j} className="receipt" onClick={() => onOpen(j)}>
+                {j.slice(0, 22)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "green") => void }) {
   const verdictCls = h.broke.length > 0 ? "red" : h.completed > 0 ? "green" : "yellow";
   const verdict =
@@ -119,6 +162,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
   const { project = "" } = useParams();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [promises, setPromises] = useState<PromiseVerdictRow[] | null>(null);
+  const [findings, setFindings] = useState<Finding[] | null>(null);
   const [journeys, setJourneys] = useState<JourneyRow[] | null>(null);
   const [cls, setCls] = useState<(typeof CLS_FILTERS)[number]>("all");
   const [open, setOpen] = useState<string | null>(null);
@@ -145,6 +189,9 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
           .then((r) => alive && setPromises(r.promises))
           .catch(() => alive && setPromises(null));
       }
+      fetchFindings(range, date, project)
+        .then((r) => alive && setFindings(r.findings))
+        .catch(() => alive && setFindings(null));
     };
     load();
     const timer = window.setInterval(load, 60_000);
@@ -170,6 +217,18 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
       )}
 
       {headline && <Headline h={headline} onPick={setCls} />}
+
+      {findings && findings.length > 0 && (
+        <div className="panel findings" style={{ marginBottom: 16 }}>
+          <div className="panel-h">
+            Findings
+            <span className="meta">actual problems, with the fix — most severe first</span>
+          </div>
+          {findings.map((f) => (
+            <FindingRow key={f.id} f={f} onOpen={setOpen} />
+          ))}
+        </div>
+      )}
 
       {summary && range === "all" && windowDays(summary) <= 1 && (
         <div className="banner">
