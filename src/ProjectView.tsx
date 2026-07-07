@@ -13,6 +13,8 @@ import {
   type JourneyEvent,
   type JourneyRow,
   type PromiseVerdictRow,
+  type ReasonRow,
+  type ReasonSample,
   type SummaryResponse,
 } from "./api";
 import { Chip, CopyButton, Dot, Skeleton, offsetLabel, spanLabel, timeShort } from "./ui";
@@ -209,6 +211,61 @@ function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "gre
   );
 }
 
+function sampleLabel(sample: ReasonSample): string {
+  const parts = [
+    `#${sample.event_id}`,
+    sample.http_status ? String(sample.http_status) : null,
+    sample.error_code ?? sample.path ?? sample.name,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function sampleTitle(sample: ReasonSample): string {
+  const bits = [
+    `journey ${sample.journey_id}`,
+    `event ${sample.event_id}`,
+    sample.name,
+    sample.http_status ? `status ${sample.http_status}` : null,
+    sample.error_code ? `code ${sample.error_code}` : null,
+    sample.path,
+    timeShort(sample.created_at),
+  ].filter(Boolean);
+  return bits.join(" · ");
+}
+
+function ReasonEvidenceRow({ reason, onOpen }: { reason: ReasonRow; onOpen: (journeyId: string) => void }) {
+  const samples = reason.samples ?? [];
+  return (
+    <div className="promise reason-row">
+      <Chip cls={reason.cls}>{reason.n}</Chip>
+      <div className="reason-body">
+        <div className="reason-top">
+          <span className="mono reason-name">{reason.reason}</span>
+          <span className="fact">
+            {samples.length > 0 ? `${samples.length}/${reason.n} receipts` : "receipts pending"}
+          </span>
+        </div>
+        {samples.length > 0 ? (
+          <div className="reason-samples">
+            {samples.map((sample) => (
+              <button
+                key={`${reason.reason}-${sample.event_id}`}
+                className="receipt"
+                title={sampleTitle(sample)}
+                onClick={() => onOpen(sample.journey_id)}
+              >
+                {sampleLabel(sample)}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="reason-empty">backend has the count, but not receipts for this row yet</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function ProjectView({ range, date }: { range: Range; date: string }) {
   const { project = "" } = useParams();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -374,12 +431,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
               <span className="meta">today, ranked</span>
             </div>
             {summary === null && <Skeleton rows={3} />}
-            {reasons.map((r) => (
-              <div key={r.cls + r.reason} className="promise" style={{ padding: "8px 16px", alignItems: "center" }}>
-                <Chip cls={r.cls}>{r.n}</Chip>
-                <span className="mono" style={{ fontSize: 12 }}>{r.reason}</span>
-              </div>
-            ))}
+            {reasons.map((r) => <ReasonEvidenceRow key={r.cls + r.reason} reason={r} onOpen={setOpen} />)}
             {summary !== null && reasons.length === 0 && <div className="empty">nothing hit a wall today</div>}
           </div>
         </div>

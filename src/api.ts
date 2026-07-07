@@ -52,6 +52,20 @@ export interface ReasonRow {
   cls: "yellow" | "red";
   reason: string;
   n: number;
+  samples?: ReasonSample[];
+}
+
+export interface ReasonSample {
+  event_id: number;
+  journey_id: string;
+  session_id: string;
+  name: string;
+  created_at: string;
+  path: string | null;
+  http_status: number | null;
+  error_code: string | null;
+  surface: string | null;
+  vertical: string | null;
 }
 
 export interface SummaryResponse {

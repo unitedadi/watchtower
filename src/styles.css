@@ -184,6 +184,18 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 .promise .chip { margin-top: 2px; min-width: 96px; justify-content: center; }
 .promise .t { font-weight: 600; font-size: 13.5px; }
 .promise .hl { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+.reason-row { padding: 10px 16px; }
+.reason-body { flex: 1; min-width: 0; }
+.reason-top {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  min-width: 0;
+}
+.reason-name { font-size: 12px; overflow-wrap: anywhere; }
+.reason-samples { margin-top: 2px; }
+.reason-empty {
+  margin-top: 4px; color: var(--faint); font-family: var(--mono);
+  font-size: 11px; overflow-wrap: anywhere;
+}
 .receipt {
   border: 1px solid var(--line); background: transparent; color: var(--accent);
   border-radius: 5px; padding: 1.5px 8px; margin: 6px 6px 0 0;
