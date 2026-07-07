@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import {
   fetchSparkline,
   fetchSummary,
+  windowDays,
+  type Range,
   type ReasonRow,
   type SparklinePoint,
   type SummaryResponse,
@@ -22,7 +24,7 @@ const COMING: Array<{ id: string; label: string }> = [
   { id: "ops-portal", label: "Ops Portal" },
 ];
 
-export function OrgHome({ date }: { date: string }) {
+export function OrgHome({ range, date }: { range: Range; date: string }) {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [spark, setSpark] = useState<SparklinePoint[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +32,7 @@ export function OrgHome({ date }: { date: string }) {
   useEffect(() => {
     let alive = true;
     const load = () => {
-      Promise.all([fetchSummary(date), fetchSparkline()])
+      Promise.all([fetchSummary(range, date), fetchSparkline()])
         .then(([s, sp]) => {
           if (!alive) return;
           setSummary(s);
@@ -45,7 +47,7 @@ export function OrgHome({ date }: { date: string }) {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [date]);
+  }, [range, date]);
 
   const sparkByProject = useMemo(() => {
     const map = new Map<string, SparklinePoint[]>();
@@ -71,13 +73,20 @@ export function OrgHome({ date }: { date: string }) {
         </div>
       )}
 
+      {summary && range === "all" && windowDays(summary) <= 1 && (
+        <div className="banner">
+          <span className="t">All time pending</span>
+          <span className="b">the deployed backend answers one day at a time — all-time windows arrive with the next backend deploy; showing today.</span>
+        </div>
+      )}
+
       {(summary?.missing_journeys ?? 0) > 0 && (
         <div className="banner">
           <span className="t">Capture gap</span>
           <span className="b">
             <span className="mono">{summary!.missing_journeys}</span> checkout intents produced zero
-            client events today — unopened links are normal in small numbers; a spike means tracking
-            itself is broken and silence cannot be trusted.
+            client events in this window — unopened links are normal in small numbers; a spike means
+            tracking itself is broken and silence cannot be trusted.
           </span>
         </div>
       )}
@@ -112,7 +121,7 @@ export function OrgHome({ date }: { date: string }) {
           const rate = total ? Math.round((cleanGreen / total) * 100) : null;
           const worst = (summary?.reasons ?? []).find((r) => r.project === p.project);
           return (
-            <Link key={p.project} to={`/p/${p.project}?date=${date}`} className="tile">
+            <Link key={p.project} to={`/p/${p.project}`} className="tile">
               <div className="name">
                 {PROJECT_LABELS[p.project] ?? p.project}
                 {rate !== null && <span className="rate">{rate}%</span>}
@@ -144,7 +153,7 @@ export function OrgHome({ date }: { date: string }) {
           ))}
         {summary && summary.projects.length === 0 && (
           <div className="panel empty" style={{ gridColumn: "1 / -1" }}>
-            <div className="big">No journeys recorded for {date}</div>
+            <div className="big">No journeys recorded in this window</div>
             deploy a capture client, or pick another date
           </div>
         )}

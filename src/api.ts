@@ -4,6 +4,21 @@
 
 const DEFAULT_API_BASE = "https://api-prod.dardoc.com";
 
+// The API base is deliberately not in the UI anymore — override with
+// ?api=http://localhost:3002 once; it persists in localStorage.
+try {
+  const override = new URLSearchParams(window.location.search).get("api");
+  if (override) localStorage.setItem("watchtower_api", override.replace(/\/+$/, ""));
+} catch {
+  // non-browser context
+}
+
+export type Range = "today" | "yesterday" | "all";
+
+function windowParams(range: Range, date: string): Record<string, string> {
+  return range === "all" ? { range: "all" } : { date };
+}
+
 export function apiBase(): string {
   try {
     return localStorage.getItem("watchtower_api")?.replace(/\/+$/, "") || DEFAULT_API_BASE;
@@ -92,8 +107,8 @@ export interface JourneyEvent {
   created_at: string;
 }
 
-export function fetchSummary(date: string, project?: string): Promise<SummaryResponse> {
-  const q = new URLSearchParams({ date });
+export function fetchSummary(range: Range, date: string, project?: string): Promise<SummaryResponse> {
+  const q = new URLSearchParams(windowParams(range, date));
   if (project) q.set("project", project);
   return get(`/telemetry/summary?${q}`);
 }
@@ -104,8 +119,13 @@ export function fetchSparkline(project?: string): Promise<{ rows: SparklinePoint
   return get(`/telemetry/sparkline?${q}`);
 }
 
-export function fetchJourneys(project: string, date: string, cls?: string): Promise<{ journeys: JourneyRow[] }> {
-  const q = new URLSearchParams({ project, date, limit: "200" });
+export function fetchJourneys(
+  project: string,
+  range: Range,
+  date: string,
+  cls?: string,
+): Promise<{ journeys: JourneyRow[] }> {
+  const q = new URLSearchParams({ project, limit: "200", ...windowParams(range, date) });
   if (cls) q.set("cls", cls);
   return get(`/telemetry/journeys?${q}`);
 }
@@ -131,4 +151,16 @@ export function fetchPromises(date: string, product = "checkout-web"): Promise<{
 
 export function todayDubai(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
+}
+
+export function yesterdayDubai(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(
+    new Date(Date.now() - 24 * 60 * 60 * 1000),
+  );
+}
+
+// Days covered by a summary window — used to detect a backend that doesn't
+// understand range=all yet (it answers with a single day).
+export function windowDays(res: { from: string; to: string }): number {
+  return (new Date(res.to).getTime() - new Date(res.from).getTime()) / 86_400_000;
 }

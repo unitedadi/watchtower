@@ -6,6 +6,8 @@ import {
   fetchJourneys,
   fetchPromises,
   fetchSummary,
+  windowDays,
+  type Range,
   type JourneyEvent,
   type JourneyRow,
   type PromiseVerdictRow,
@@ -23,7 +25,7 @@ const PROMISE_STATUS_CLS: Record<PromiseVerdictRow["status"], string> = {
   unverified: "gray",
 };
 
-export function ProjectView({ date }: { date: string }) {
+export function ProjectView({ range, date }: { range: Range; date: string }) {
   const { project = "" } = useParams();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [promises, setPromises] = useState<PromiseVerdictRow[] | null>(null);
@@ -36,8 +38,8 @@ export function ProjectView({ date }: { date: string }) {
     let alive = true;
     const load = () => {
       Promise.all([
-        fetchSummary(date, project),
-        fetchJourneys(project, date, cls === "all" ? undefined : cls),
+        fetchSummary(range, date, project),
+        fetchJourneys(project, range, date, cls === "all" ? undefined : cls),
       ])
         .then(([s, j]) => {
           if (!alive) return;
@@ -46,9 +48,13 @@ export function ProjectView({ date }: { date: string }) {
           setError(null);
         })
         .catch((err: Error) => alive && setError(err.message));
-      fetchPromises(date, project)
-        .then((r) => alive && setPromises(r.promises))
-        .catch(() => alive && setPromises(null));
+      if (range === "all") {
+        setPromises(null);
+      } else {
+        fetchPromises(date, project)
+          .then((r) => alive && setPromises(r.promises))
+          .catch(() => alive && setPromises(null));
+      }
     };
     load();
     const timer = window.setInterval(load, 60_000);
@@ -56,7 +62,7 @@ export function ProjectView({ date }: { date: string }) {
       alive = false;
       window.clearInterval(timer);
     };
-  }, [date, project, cls]);
+  }, [range, date, project, cls]);
 
   const totals = summary?.projects.find((p) => p.project === project);
   const reasons = (summary?.reasons ?? []).filter((r) => r.project === project);
@@ -69,6 +75,13 @@ export function ProjectView({ date }: { date: string }) {
         <div className="banner">
           <span className="t">API unreachable</span>
           <span className="b mono">{error}</span>
+        </div>
+      )}
+
+      {summary && range === "all" && windowDays(summary) <= 1 && (
+        <div className="banner">
+          <span className="t">All time pending</span>
+          <span className="b">the deployed backend answers one day at a time — all-time windows arrive with the next backend deploy; showing today.</span>
         </div>
       )}
 
@@ -119,7 +132,10 @@ export function ProjectView({ date }: { date: string }) {
               Promises
               <span className="meta">green is earned, not assumed</span>
             </div>
-            {promises === null && <Skeleton rows={5} />}
+            {promises === null && range === "all" && (
+              <div className="empty">promises are judged per day — switch to Today or Yesterday</div>
+            )}
+            {promises === null && range !== "all" && <Skeleton rows={5} />}
             {promises?.map((p) => (
               <div key={p.promise_id} className="promise">
                 <Chip cls={PROMISE_STATUS_CLS[p.status]}>{p.status}</Chip>

@@ -2,20 +2,25 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Route, Routes, useLocation, useParams } from "react-router-dom";
 
-import { apiBase, setApiBase, todayDubai } from "./api";
+import { todayDubai, yesterdayDubai, type Range } from "./api";
 import { EyesMark } from "./ui";
 import { OrgHome } from "./OrgHome";
 import { ProjectView } from "./ProjectView";
 import "./styles.css";
 
-function Topbar({ date, onDate }: { date: string; onDate: (d: string) => void }) {
+const RANGES: Array<[Range, string]> = [
+  ["today", "Today"],
+  ["yesterday", "Yesterday"],
+  ["all", "All time"],
+];
+
+function Topbar({ range, onRange }: { range: Range; onRange: (r: Range) => void }) {
   const location = useLocation();
   const { project } = useParams();
-  const [api, setApi] = useState(apiBase());
   const onProjectPage = location.pathname.startsWith("/p/");
   return (
     <div className="topbar">
-      <Link to={`/?date=${date}`} className="wordmark">
+      <Link to="/" className="wordmark">
         <EyesMark />
         WATCHTOWER
       </Link>
@@ -25,33 +30,28 @@ function Topbar({ date, onDate }: { date: string; onDate: (d: string) => void })
         </span>
       )}
       <span className="spacer" />
-      <input type="date" value={date} max={todayDubai()} onChange={(e) => onDate(e.target.value)} />
-      <input
-        className="api-field"
-        type="text"
-        value={api}
-        title="Telemetry API base"
-        onChange={(e) => setApi(e.target.value)}
-        onBlur={() => {
-          setApiBase(api);
-          window.location.reload();
-        }}
-      />
+      <div className="filters">
+        {RANGES.map(([r, label]) => (
+          <button key={r} className={range === r ? "on" : ""} onClick={() => onRange(r)}>
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
 function App() {
-  const params = new URLSearchParams(window.location.search);
-  const [date, setDate] = useState(params.get("date") || todayDubai());
+  const [range, setRange] = useState<Range>("today");
+  const date = range === "yesterday" ? yesterdayDubai() : todayDubai();
   return (
     <div className="shell">
       <Routes>
-        <Route path="/*" element={<Topbar date={date} onDate={setDate} />} />
+        <Route path="/*" element={<Topbar range={range} onRange={setRange} />} />
       </Routes>
       <Routes>
-        <Route path="/" element={<OrgHome date={date} />} />
-        <Route path="/p/:project" element={<ProjectView date={date} />} />
+        <Route path="/" element={<OrgHome range={range} date={date} />} />
+        <Route path="/p/:project" element={<ProjectView range={range} date={date} />} />
       </Routes>
     </div>
   );
