@@ -24,6 +24,25 @@ const COMING: Array<{ id: string; label: string }> = [
   { id: "ops-portal", label: "Ops Portal" },
 ];
 
+function emptySummaryCopy(range: Range, date: string): { title: string; body: string } {
+  if (range === "today") {
+    return {
+      title: `No journeys yet today (${date})`,
+      body: "Capture may still be live; this Dubai-day window has no recorded journeys yet. Switch to Yesterday for the latest populated day.",
+    };
+  }
+  if (range === "yesterday") {
+    return {
+      title: `No journeys recorded for ${date}`,
+      body: "No project reported journeys in that completed Dubai-day window. Pick another date window to compare.",
+    };
+  }
+  return {
+    title: "No journeys recorded in this window",
+    body: "No project reported journeys for this selected window yet.",
+  };
+}
+
 export function OrgHome({ range, date }: { range: Range; date: string }) {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [spark, setSpark] = useState<SparklinePoint[]>([]);
@@ -63,6 +82,7 @@ export function OrgHome({ range, date }: { range: Range; date: string }) {
     (r) => r.cls === "red" || r.reason === "UNCLASSIFIED",
   );
   const live = new Set((summary?.projects ?? []).map((p) => p.project));
+  const emptyCopy = emptySummaryCopy(range, date);
 
   return (
     <>
@@ -153,8 +173,8 @@ export function OrgHome({ range, date }: { range: Range; date: string }) {
           ))}
         {summary && summary.projects.length === 0 && (
           <div className="panel empty" style={{ gridColumn: "1 / -1" }}>
-            <div className="big">No journeys recorded in this window</div>
-            deploy a capture client, or pick another date
+            <div className="big">{emptyCopy.title}</div>
+            {emptyCopy.body}
           </div>
         )}
       </div>

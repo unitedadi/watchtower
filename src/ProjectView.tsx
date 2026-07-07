@@ -85,7 +85,36 @@ const SEVERITY_CLS: Record<Finding["severity"], string> = {
   low: "info",
 };
 
+function codexHandoffText(f: Finding): string {
+  if (!f.codex_handoff) return "";
+  const lines = [
+    `Problem: ${f.codex_handoff.problem}`,
+    `Expected: ${f.codex_handoff.expected}`,
+    "",
+    "Observed:",
+    ...f.codex_handoff.observed.map((line) => `- ${line}`),
+    "",
+    "Receipts:",
+    ...f.codex_handoff.receipts.map((line) => `- ${line}`),
+    "",
+    `Autofix ready: ${f.autofix?.ready ? "yes" : "no"}`,
+    `Autofix gate: ${f.autofix?.reason ?? "not provided"}`,
+  ];
+  if (f.autofix?.repo) lines.push(`Repo: ${f.autofix.repo}`);
+  if (f.autofix?.files?.length) lines.push(`Files: ${f.autofix.files.join(", ")}`);
+  lines.push("", "Prompt:", f.codex_handoff.prompt);
+  return lines.join("\n");
+}
+
+function emptyJourneysCopy(cls: (typeof CLS_FILTERS)[number], range: Range, date: string): string {
+  if (cls !== "all") return "no journeys match this filter";
+  if (range === "today") return `no checkout journeys recorded yet today (${date})`;
+  if (range === "yesterday") return `no checkout journeys recorded for ${date}`;
+  return "no checkout journeys recorded in this window";
+}
+
 function FindingRow({ f, onOpen }: { f: Finding; onOpen: (j: string) => void }) {
+  const handoff = codexHandoffText(f);
   return (
     <div className="finding">
       <div className="finding-head">
@@ -94,10 +123,17 @@ function FindingRow({ f, onOpen }: { f: Finding; onOpen: (j: string) => void }) 
           {f.severity}
         </span>
         <span className="finding-title">{f.title}</span>
+        {f.confidence && <span className="finding-affected mono">{f.confidence} confidence</span>}
         <span className="finding-affected mono">{f.affected} affected</span>
       </div>
       <div className="finding-body">
         <p className="finding-cause">{f.root_cause}</p>
+        {f.evidence_summary && f.evidence_summary.length > 0 && (
+          <div className="finding-ev">
+            <span className="fl">proof</span>
+            <span className="mono">{f.evidence_summary.join(" · ")}</span>
+          </div>
+        )}
         <p className="finding-impact">
           <span className="fl">impact</span> {f.impact}
         </p>
@@ -114,15 +150,24 @@ function FindingRow({ f, onOpen }: { f: Finding; onOpen: (j: string) => void }) 
             ))}
           </div>
         )}
+        {handoff && (
+          <details className="meta">
+            <summary>Codex handoff</summary>
+            <pre>{handoff}</pre>
+          </details>
+        )}
       </div>
     </div>
   );
 }
 
 function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "green") => void }) {
-  const verdictCls = h.broke.length > 0 ? "red" : h.completed > 0 ? "green" : "yellow";
+  const hasJourneys = h.total > 0;
+  const verdictCls = !hasJourneys ? "yellow" : h.broke.length > 0 ? "red" : h.completed > 0 ? "green" : "yellow";
   const verdict =
-    h.broke.length > 0
+    !hasJourneys
+      ? "no journeys recorded"
+      : h.broke.length > 0
       ? `${h.broke.length} ${h.broke.length === 1 ? "journey" : "journeys"} broke`
       : "nothing broke";
   return (
@@ -132,19 +177,25 @@ function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "gre
           <span className={`dot ${verdictCls}`} />
           {verdict}
         </span>
-        <span className="hl-line">
-          <b>{h.total}</b> sessions ·{" "}
-          <button className="hl-num green" onClick={() => onPick("green")}>
-            {h.completed} completed
-          </button>{" "}
-          ·{" "}
-          <button className="hl-num red" onClick={() => onPick("red")}>
-            {h.broke.length} broke
-          </button>{" "}
-          · <span className="faint">{h.bounced} opened &amp; left</span>
-        </span>
+        {hasJourneys ? (
+          <span className="hl-line">
+            <b>{h.total}</b> sessions ·{" "}
+            <button className="hl-num green" onClick={() => onPick("green")}>
+              {h.completed} completed
+            </button>{" "}
+            ·{" "}
+            <button className="hl-num red" onClick={() => onPick("red")}>
+              {h.broke.length} broke
+            </button>{" "}
+            · <span className="faint">{h.bounced} opened &amp; left</span>
+          </span>
+        ) : (
+          <span className="hl-line">
+            <b>0</b> sessions · no customer evidence in this selected window
+          </span>
+        )}
       </div>
-      {h.walls.length > 0 && (
+      {hasJourneys && h.walls.length > 0 && (
         <div className="hl-walls">
           {h.walls.map((w) => (
             <span key={w.reason} className="hl-wall">
@@ -381,7 +432,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
             </tbody>
           </table>
         )}
-        {journeys !== null && journeys.length === 0 && <div className="empty">no journeys match this filter</div>}
+        {journeys !== null && journeys.length === 0 && <div className="empty">{emptyJourneysCopy(cls, range, date)}</div>}
       </div>
 
       {open && <Inspector journeyId={open} onClose={() => setOpen(null)} />}

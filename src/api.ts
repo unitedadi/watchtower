@@ -152,12 +152,27 @@ export function fetchPromises(date: string, product = "checkout-web"): Promise<{
 export interface Finding {
   id: string;
   severity: "critical" | "high" | "medium" | "low";
+  confidence?: "high" | "medium" | "low";
   title: string;
   root_cause: string;
   impact: string;
   suggested_fix: string;
   affected: number;
   evidence: string[];
+  evidence_summary?: string[];
+  codex_handoff?: {
+    problem: string;
+    observed: string[];
+    expected: string;
+    receipts: string[];
+    prompt: string;
+  };
+  autofix?: {
+    ready: boolean;
+    reason: string;
+    repo?: string;
+    files?: string[];
+  };
 }
 
 export function fetchFindings(range: Range, date: string, product = "checkout-web"): Promise<{ findings: Finding[] }> {
