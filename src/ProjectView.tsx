@@ -211,15 +211,6 @@ function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "gre
   );
 }
 
-function sampleLabel(sample: ReasonSample): string {
-  const parts = [
-    `#${sample.event_id}`,
-    sample.http_status ? String(sample.http_status) : null,
-    sample.error_code ?? sample.path ?? sample.name,
-  ].filter(Boolean);
-  return parts.join(" · ");
-}
-
 function sampleTitle(sample: ReasonSample): string {
   const bits = [
     `journey ${sample.journey_id}`,
@@ -233,30 +224,144 @@ function sampleTitle(sample: ReasonSample): string {
   return bits.join(" · ");
 }
 
-function ReasonEvidenceRow({ reason, onOpen }: { reason: ReasonRow; onOpen: (journeyId: string) => void }) {
+function reasonLabel(reason: string): string {
+  return REASON_LABEL[reason] ?? reason.replace(/_/g, " ");
+}
+
+function receiptStatusCls(sample: ReasonSample): string {
+  if (!sample.http_status) return "";
+  return sample.http_status >= 400 ? "st-bad" : "st-ok";
+}
+
+function sampleCaseLine(sample: ReasonSample): string {
+  const request = sample.path ?? sample.name;
+  return [
+    `event_id=${sample.event_id}`,
+    `journey_id=${sample.journey_id}`,
+    `session_id=${sample.session_id}`,
+    sample.http_status ? `http_status=${sample.http_status}` : null,
+    sample.error_code ? `error_code=${sample.error_code}` : null,
+    request ? `request=${request}` : null,
+    sample.surface ? `surface=${sample.surface}` : null,
+    sample.vertical ? `vertical=${sample.vertical}` : null,
+    `created_at=${sample.created_at}`,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+}
+
+function buildProblemCasePrompt(params: { project: string; range: Range; date: string; reason: ReasonRow }): string {
+  const { project, range, date, reason } = params;
   const samples = reason.samples ?? [];
+  const label = reasonLabel(reason.reason);
+  const receipts =
+    samples.length > 0
+      ? samples.map((sample, index) => `${index + 1}. ${sampleCaseLine(sample)}`).join("\n")
+      : "No sample receipts were attached by the backend for this reason row.";
+
+  return [
+    "You are Codex. Investigate and fix this customer-experience problem.",
+    "",
+    `Product: ${project}`,
+    `Selected window: ${range} (${date}, Asia/Dubai day)`,
+    `Problem: ${label}`,
+    `Machine reason: ${reason.reason}`,
+    `Severity class: ${reason.cls}`,
+    `Observed count: ${reason.n} event${reason.n === 1 ? "" : "s"}`,
+    `Receipt samples included: ${samples.length}`,
+    "",
+    "What happened:",
+    `- Watchtower classified ${reason.n} event${reason.n === 1 ? "" : "s"} as ${reason.cls} for ${reason.reason}.`,
+    "- Treat this as not-green until the exact cause is understood and either fixed or deliberately reclassified with evidence.",
+    "",
+    "Receipts:",
+    receipts,
+    "",
+    "Fix brief:",
+    "- Open the relevant checkout/frontend/backend code and trace the exact request or event names in the receipts.",
+    "- Reproduce or explain why the customer hit this condition.",
+    "- Patch the smallest code path that prevents the broken or misleading experience.",
+    "- Add/adjust focused tests or telemetry classification only if that is required to prevent missing this again.",
+    "- Verify against the same receipt shape before marking the case done.",
+  ].join("\n");
+}
+
+function PrepareCaseButton({ prompt }: { prompt: string }) {
+  const [done, setDone] = useState(false);
   return (
-    <div className="promise reason-row">
-      <Chip cls={reason.cls}>{reason.n}</Chip>
+    <button
+      className="casebtn"
+      onClick={(e) => {
+        e.stopPropagation();
+        void navigator.clipboard?.writeText(prompt);
+        setDone(true);
+        window.setTimeout(() => setDone(false), 1400);
+      }}
+    >
+      {done ? "case copied" : "fix my case"}
+    </button>
+  );
+}
+
+function ReasonEvidenceRow({
+  reason,
+  project,
+  range,
+  date,
+  onOpen,
+}: {
+  reason: ReasonRow;
+  project: string;
+  range: Range;
+  date: string;
+  onOpen: (journeyId: string) => void;
+}) {
+  const samples = reason.samples ?? [];
+  const casePrompt = buildProblemCasePrompt({ project, range, date, reason });
+  return (
+    <div className="reason-row">
+      <div className="reason-actionbar">
+        <PrepareCaseButton prompt={casePrompt} />
+        <span className={`reason-count ${reason.cls}`}>
+          {reason.n} {reason.n === 1 ? "event" : "events"}
+        </span>
+      </div>
       <div className="reason-body">
         <div className="reason-top">
-          <span className="mono reason-name">{reason.reason}</span>
-          <span className="fact">
-            {samples.length > 0 ? `${samples.length}/${reason.n} receipts` : "receipts pending"}
-          </span>
+          <span className="reason-label">{reasonLabel(reason.reason)}</span>
+          <span className="fact mono reason-code">{reason.reason}</span>
+        </div>
+        <div className="reason-evidence-line">
+          {samples.length > 0
+            ? `${samples.length} receipts shown of ${reason.n} ${reason.n === 1 ? "event" : "events"}`
+            : "backend counted this, but receipts are not attached yet"}
         </div>
         {samples.length > 0 ? (
           <div className="reason-samples">
-            {samples.map((sample) => (
-              <button
-                key={`${reason.reason}-${sample.event_id}`}
-                className="receipt"
-                title={sampleTitle(sample)}
-                onClick={() => onOpen(sample.journey_id)}
-              >
-                {sampleLabel(sample)}
-              </button>
-            ))}
+            {samples.map((sample) => {
+              const primary = sample.error_code ?? reason.reason;
+              const request = sample.path ?? sample.name;
+              return (
+                <button
+                  key={`${reason.reason}-${sample.event_id}`}
+                  className="receipt reason-receipt"
+                  title={sampleTitle(sample)}
+                  onClick={() => onOpen(sample.journey_id)}
+                >
+                  <span className="receipt-top">
+                    <span className="receipt-id">#{sample.event_id}</span>
+                    {sample.http_status ? (
+                      <span className={`receipt-status ${receiptStatusCls(sample)}`}>HTTP {sample.http_status}</span>
+                    ) : null}
+                  </span>
+                  <span className="receipt-main">{primary}</span>
+                  {request && request !== primary ? <span className="receipt-request">{request}</span> : null}
+                  <span className="receipt-meta">
+                    {sample.journey_id.slice(0, 22)} · {timeShort(sample.created_at)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         ) : (
           <div className="reason-empty">backend has the count, but not receipts for this row yet</div>
@@ -431,7 +536,16 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
               <span className="meta">today, ranked</span>
             </div>
             {summary === null && <Skeleton rows={3} />}
-            {reasons.map((r) => <ReasonEvidenceRow key={r.cls + r.reason} reason={r} onOpen={setOpen} />)}
+            {reasons.map((r) => (
+              <ReasonEvidenceRow
+                key={r.cls + r.reason}
+                reason={r}
+                project={project}
+                range={range}
+                date={date}
+                onOpen={setOpen}
+              />
+            ))}
             {summary !== null && reasons.length === 0 && <div className="empty">nothing hit a wall today</div>}
           </div>
         </div>
