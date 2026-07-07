@@ -105,6 +105,21 @@ export function fetchJourneyEvents(journeyId: string): Promise<{ events: Journey
   return get(`/telemetry/journeys/${encodeURIComponent(journeyId)}/events`);
 }
 
+export interface PromiseVerdictRow {
+  promise_id: string;
+  title: string;
+  statement: string;
+  status: "held" | "degraded" | "broken" | "unverified";
+  headline: string;
+  evidence: { facts: Record<string, unknown>; samples?: string[]; notes?: string[] };
+  checked_at?: string;
+}
+
+export function fetchPromises(date: string, product = "checkout-web"): Promise<{ promises: PromiseVerdictRow[] }> {
+  const q = new URLSearchParams({ date, product });
+  return get(`/telemetry/promises?${q}`);
+}
+
 export function todayDubai(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dubai" }).format(new Date());
 }

@@ -112,6 +112,19 @@ details.meta pre {
   overflow-x: auto; margin: 6px 0 0;
 }
 
+.promise-row {
+  display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line);
+  align-items: flex-start;
+}
+.promise-row:last-child { border-bottom: none; }
+.receipt {
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 6px; padding: 2px 8px; margin: 0 6px 4px 0; font: inherit;
+  font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+}
+.receipt:hover { border-color: var(--ink); }
+
 .empty { color: var(--muted); text-align: center; padding: 30px 0; }
 .error-banner {
   background: var(--red-bg); color: var(--red); border-radius: var(--radius);

@@ -4,18 +4,28 @@ import { useParams } from "react-router-dom";
 import {
   fetchJourneyEvents,
   fetchJourneys,
+  fetchPromises,
   fetchSummary,
   type JourneyEvent,
   type JourneyRow,
+  type PromiseVerdictRow,
   type SummaryResponse,
 } from "./api";
 import { Dot, Pill, timeShort } from "./ui";
+
+const PROMISE_STATUS_CLS: Record<PromiseVerdictRow["status"], string> = {
+  held: "green",
+  degraded: "yellow",
+  broken: "red",
+  unverified: "info",
+};
 
 const CLS_FILTERS = ["all", "red", "yellow", "green", "active"] as const;
 
 export function ProjectView({ date }: { date: string }) {
   const { project = "" } = useParams();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [promises, setPromises] = useState<PromiseVerdictRow[] | null>(null);
   const [journeys, setJourneys] = useState<JourneyRow[]>([]);
   const [cls, setCls] = useState<(typeof CLS_FILTERS)[number]>("all");
   const [open, setOpen] = useState<string | null>(null);
@@ -36,6 +46,10 @@ export function ProjectView({ date }: { date: string }) {
           setError(null);
         })
         .catch((err: Error) => alive && setError(err.message));
+      // The promise board — absent (older backend) just hides the section.
+      fetchPromises(date, project)
+        .then((r) => alive && setPromises(r.promises))
+        .catch(() => alive && setPromises(null));
     };
     load();
     const timer = window.setInterval(load, 60_000);
@@ -59,6 +73,34 @@ export function ProjectView({ date }: { date: string }) {
   return (
     <>
       {error && <div className="error-banner">Cannot reach the telemetry API: {error}</div>}
+
+      {promises && promises.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <h3>Promises — green is earned, not assumed</h3>
+          {promises.map((p) => (
+            <div key={p.promise_id} className="promise-row">
+              <Pill cls={PROMISE_STATUS_CLS[p.status]}>{p.status.toUpperCase()}</Pill>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 550 }}>{p.title}</div>
+                <div className="muted small">{p.headline}</div>
+                {(p.evidence.samples ?? []).length > 0 && (
+                  <div className="small" style={{ marginTop: 4 }}>
+                    {p.evidence.samples!.slice(0, 5).map((s) => (
+                      <button key={s} className="receipt" onClick={() => setOpen(s)}>
+                        {s.slice(0, 24)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <details className="meta">
+                  <summary className="small muted">evidence</summary>
+                  <pre>{JSON.stringify({ statement: p.statement, ...p.evidence }, null, 2)}</pre>
+                </details>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {totals && (
         <div className="counts" style={{ marginBottom: 16 }}>
