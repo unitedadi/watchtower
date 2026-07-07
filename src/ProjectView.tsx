@@ -25,6 +25,96 @@ const PROMISE_STATUS_CLS: Record<PromiseVerdictRow["status"], string> = {
   unverified: "gray",
 };
 
+// Plain-English names for the machine reasons, so the headline reads like a
+// sentence a human wrote, not an error code.
+const REASON_LABEL: Record<string, string> = {
+  checkout_intent_expired: "opened an expired link",
+  checkout_intent_no_longer_valid: "opened a dead/replaced link",
+  checkout_intent_superseded: "opened a replaced link",
+  slot_unavailable: "no time slot available",
+  slot_too_soon: "picked a too-soon slot",
+  address_unserviceable: "address not in a served area",
+  address_outside_service_zone: "address not in a served area",
+  promo_rejected: "promo code rejected",
+  third_party_script_error: "hit a marketing-tag error (non-blocking)",
+  client_exception: "hit an app error",
+  validation_error: "sent a bad request (our bug)",
+  network_error: "lost their connection",
+  payment_sheet_failed: "payment sheet failed to load",
+  payment_stuck: "payment never came back",
+  false_green_payment: "shown paid but money not captured",
+};
+
+interface Headline {
+  total: number;
+  completed: number;
+  broke: JourneyRow[];
+  walls: Array<{ reason: string; label: string; n: number; cls: string }>;
+  bounced: number;
+}
+
+// Bucket journeys into what a human actually wants: who finished, who broke,
+// who hit a nameable wall, who just opened a link and left.
+function summarizeJourneys(journeys: JourneyRow[]): Headline {
+  const broke = journeys.filter((j) => j.journey_cls === "red");
+  const completed = journeys.filter((j) => j.goal).length;
+  const wallMap = new Map<string, { n: number; cls: string }>();
+  let bounced = 0;
+  for (const j of journeys) {
+    if (j.journey_cls === "red" || j.goal) continue;
+    const r = j.primary_reason;
+    if (r) {
+      const prev = wallMap.get(r) ?? { n: 0, cls: j.journey_cls };
+      wallMap.set(r, { n: prev.n + 1, cls: j.journey_cls });
+    } else {
+      bounced += 1;
+    }
+  }
+  const walls = Array.from(wallMap.entries())
+    .map(([reason, v]) => ({ reason, label: REASON_LABEL[reason] ?? reason.replace(/_/g, " "), n: v.n, cls: v.cls }))
+    .sort((a, b) => b.n - a.n);
+  return { total: journeys.length, completed, broke, walls, bounced };
+}
+
+function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "green") => void }) {
+  const verdictCls = h.broke.length > 0 ? "red" : h.completed > 0 ? "green" : "yellow";
+  const verdict =
+    h.broke.length > 0
+      ? `${h.broke.length} ${h.broke.length === 1 ? "journey" : "journeys"} broke`
+      : "nothing broke";
+  return (
+    <div className="headline">
+      <div className="headline-top">
+        <span className={`hl-verdict ${verdictCls}`}>
+          <span className={`dot ${verdictCls}`} />
+          {verdict}
+        </span>
+        <span className="hl-line">
+          <b>{h.total}</b> sessions ·{" "}
+          <button className="hl-num green" onClick={() => onPick("green")}>
+            {h.completed} completed
+          </button>{" "}
+          ·{" "}
+          <button className="hl-num red" onClick={() => onPick("red")}>
+            {h.broke.length} broke
+          </button>{" "}
+          · <span className="faint">{h.bounced} opened &amp; left</span>
+        </span>
+      </div>
+      {h.walls.length > 0 && (
+        <div className="hl-walls">
+          {h.walls.map((w) => (
+            <span key={w.reason} className="hl-wall">
+              <span className={`dot ${w.cls}`} />
+              <b>{w.n}</b> {w.label}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProjectView({ range, date }: { range: Range; date: string }) {
   const { project = "" } = useParams();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -68,6 +158,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
   const reasons = (summary?.reasons ?? []).filter((r) => r.project === project);
   const cleanGreen = totals ? totals.green - totals.friction : 0;
   const total = totals ? totals.green + totals.yellow + totals.red : 0;
+  const headline = journeys ? summarizeJourneys(journeys) : null;
 
   return (
     <>
@@ -77,6 +168,8 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
           <span className="b mono">{error}</span>
         </div>
       )}
+
+      {headline && <Headline h={headline} onPick={setCls} />}
 
       {summary && range === "all" && windowDays(summary) <= 1 && (
         <div className="banner">
@@ -88,34 +181,34 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
       {totals && (
         <div className="kpis">
           <div className="kpi">
-            <div className="l">Clean green</div>
-            <div className="v green">{cleanGreen}</div>
-            <div className="s">{total ? Math.round((cleanGreen / total) * 100) : 0}% of judged</div>
+            <div className="l">Completed</div>
+            <div className="v green">{headline ? headline.completed : totals.green}</div>
+            <div className="s">{totals.friction > 0 ? `${cleanGreen} clean · ${totals.friction} w/ friction` : "reached checkout"}</div>
           </div>
           <div className="kpi">
-            <div className="l">Friction</div>
-            <div className="v yellow">{totals.friction}</div>
-            <div className="s">goal despite walls</div>
-          </div>
-          <div className="kpi">
-            <div className="l">Yellow</div>
-            <div className="v yellow">{totals.yellow}</div>
-            <div className="s">walls + abandoned</div>
-          </div>
-          <div className="kpi">
-            <div className="l">Red</div>
-            <div className="v red">{totals.red}</div>
+            <div className="l">Broke</div>
+            <div className="v red">{headline ? headline.broke.length : totals.red}</div>
             <div className="s">hard failures</div>
           </div>
           <div className="kpi">
-            <div className="l">Active</div>
-            <div className="v info">{totals.active}</div>
-            <div className="s">in flight now</div>
+            <div className="l">Hit a wall</div>
+            <div className="v yellow">{headline ? headline.walls.reduce((s, w) => s + w.n, 0) : 0}</div>
+            <div className="s">named friction</div>
+          </div>
+          <div className="kpi">
+            <div className="l">Opened &amp; left</div>
+            <div className="v">{headline ? headline.bounced : 0}</div>
+            <div className="s">no action taken</div>
           </div>
           <div className="kpi">
             <div className="l">Unknown</div>
             <div className="v red">{totals.unclassified}</div>
             <div className="s">must reach zero</div>
+          </div>
+          <div className="kpi">
+            <div className="l">Active</div>
+            <div className="v info">{totals.active}</div>
+            <div className="s">in flight now</div>
           </div>
           <div className="kpi">
             <div className="l">Unseen intents</div>

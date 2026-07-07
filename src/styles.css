@@ -113,6 +113,34 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 }
 .panel-h .meta { margin-left: auto; color: var(--faint); font-family: var(--mono); font-weight: 400; letter-spacing: 0; text-transform: none; }
 
+/* ---------- headline (plain-English "what happened") ---------- */
+.headline {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 16px 18px; margin-bottom: 16px;
+}
+.headline-top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.hl-verdict {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+}
+.hl-verdict.green { color: var(--green); }
+.hl-verdict.yellow { color: var(--amber); }
+.hl-verdict.red { color: var(--red); }
+.hl-verdict .dot { width: 9px; height: 9px; }
+.hl-line { font-size: 13.5px; color: var(--muted); }
+.hl-line b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+.hl-num {
+  border: none; background: none; cursor: pointer; padding: 0;
+  font-family: var(--mono); font-weight: 500; font-size: 13.5px;
+  border-bottom: 1px dashed transparent;
+}
+.hl-num.green { color: var(--green); }
+.hl-num.red { color: var(--red); }
+.hl-num:hover { border-bottom-color: currentColor; }
+.hl-walls { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.hl-wall { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+.hl-wall b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
+
 /* ---------- KPI strip ---------- */
 .kpis {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
