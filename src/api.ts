@@ -33,7 +33,16 @@ export function setApiBase(base: string): void {
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${apiBase()}${path}`, { headers: { Accept: "application/json" } });
-  if (!res.ok) throw new Error(`${res.status} ${path}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = (await res.json()) as { error?: unknown };
+      if (typeof body.error === "string" && body.error) detail = ` ${body.error}`;
+    } catch {
+      // Keep the status/path error when the response is not JSON.
+    }
+    throw new Error(`${res.status}${detail} ${path}`);
+  }
   return (await res.json()) as T;
 }
 
@@ -154,8 +163,33 @@ export interface PromiseVerdictRow {
   statement: string;
   status: "held" | "degraded" | "broken" | "unverified";
   headline: string;
-  evidence: { facts: Record<string, unknown>; samples?: string[]; notes?: string[] };
+  evidence: {
+    facts: Record<string, unknown>;
+    samples?: string[];
+    notes?: string[];
+    proof_gaps?: string[];
+    receipts?: PromiseReceipt[];
+  };
   checked_at?: string;
+}
+
+export interface PromiseReceipt {
+  event_id: string;
+  client_event_id?: string | null;
+  journey_id: string;
+  session_id: string;
+  name: string;
+  cls: string;
+  reason: string;
+  event_type: string;
+  observed_at: string;
+  ingested_at: string;
+  http_status?: number | null;
+  error_code?: string | null;
+  path?: string | null;
+  surface?: string | null;
+  vertical?: string | null;
+  meta?: Record<string, unknown>;
 }
 
 export function fetchPromises(date: string, product = "checkout-web"): Promise<{ promises: PromiseVerdictRow[] }> {

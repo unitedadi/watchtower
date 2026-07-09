@@ -13,6 +13,7 @@ import {
   type JourneyEvent,
   type JourneyRow,
   type PromiseVerdictRow,
+  type PromiseReceipt,
   type ReasonRow,
   type ReasonSample,
   type SummaryResponse,
@@ -51,6 +52,7 @@ const REASON_LABEL: Record<string, string> = {
   goal_rx_subscription_activated: "Rx subscription activated",
   goal_consultation_booked: "consultation booked",
   registration_completed: "finished signup",
+  goal_registration_completed: "finished signup",
   user_cancelled_payment: "closed the payment sheet",
   apple_pay_unavailable: "Apple Pay not available on device",
   payment_result_timeout: "paid but app never saw confirmation",
@@ -61,6 +63,11 @@ const REASON_LABEL: Record<string, string> = {
   app_hang: "app froze",
   app_crash: "app crashed",
   checkout_create_failed: "checkout could not be created",
+  checkout_prerequisite_missing: "checkout was missing required state",
+  maps_lookup_failed: "address lookup failed",
+  capture_queue_overflow: "telemetry queue dropped evidence",
+  capture_event_rejected: "backend rejected telemetry evidence",
+  voip_registration_failed: "doctor-call notifications could not register",
 };
 
 interface Headline {
@@ -177,15 +184,43 @@ function FindingRow({ f, onOpen }: { f: Finding; onOpen: (j: string) => void }) 
   );
 }
 
-function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "green") => void }) {
+function Headline({
+  h,
+  promises,
+  promiseError,
+  onPick,
+}: {
+  h: Headline;
+  promises: PromiseVerdictRow[] | null;
+  promiseError: string | null;
+  onPick: (c: "all" | "red" | "green") => void;
+}) {
   const hasJourneys = h.total > 0;
-  const verdictCls = !hasJourneys ? "yellow" : h.broke.length > 0 ? "red" : h.completed > 0 ? "green" : "yellow";
-  const verdict =
-    !hasJourneys
-      ? "no journeys recorded"
-      : h.broke.length > 0
+  const brokenPromises = promises?.filter((promise) => promise.status === "broken").length ?? 0;
+  const degradedPromises = promises?.filter((promise) => promise.status === "degraded").length ?? 0;
+  const unverifiedPromises = promises?.filter((promise) => promise.status === "unverified").length ?? 0;
+  const promiseCatalogMissing = promiseError !== null || (promises !== null && promises.length === 0);
+  const verdictCls =
+    brokenPromises > 0 || h.broke.length > 0
+      ? "red"
+      : degradedPromises > 0
+        ? "yellow"
+        : unverifiedPromises > 0 || promiseCatalogMissing || promises === null
+          ? "yellow"
+          : "green";
+  const verdict = brokenPromises > 0
+    ? `${brokenPromises} ${brokenPromises === 1 ? "promise" : "promises"} broken`
+    : h.broke.length > 0
       ? `${h.broke.length} ${h.broke.length === 1 ? "journey" : "journeys"} broke`
-      : "nothing broke";
+      : degradedPromises > 0
+        ? `${degradedPromises} ${degradedPromises === 1 ? "promise" : "promises"} degraded`
+        : unverifiedPromises > 0
+          ? "green not yet proven"
+          : promiseCatalogMissing
+            ? "promise evidence unavailable"
+            : promises === null
+              ? "checking promises"
+              : "all promises held";
   return (
     <div className="headline">
       <div className="headline-top">
@@ -211,6 +246,23 @@ function Headline({ h, onPick }: { h: Headline; onPick: (c: "all" | "red" | "gre
           </span>
         )}
       </div>
+      {promises && promises.length > 0 && (
+        <div className="hl-walls">
+          <span className="hl-wall">
+            <span className="dot green" />
+            <b>{promises.filter((promise) => promise.status === "held").length}</b> held
+          </span>
+          {degradedPromises > 0 && (
+            <span className="hl-wall"><span className="dot yellow" /><b>{degradedPromises}</b> degraded</span>
+          )}
+          {brokenPromises > 0 && (
+            <span className="hl-wall"><span className="dot red" /><b>{brokenPromises}</b> broken</span>
+          )}
+          {unverifiedPromises > 0 && (
+            <span className="hl-wall"><span className="dot gray" /><b>{unverifiedPromises}</b> unverified</span>
+          )}
+        </div>
+      )}
       {hasJourneys && h.walls.length > 0 && (
         <div className="hl-walls">
           {h.walls.map((w) => (
@@ -309,8 +361,27 @@ function buildPromiseCasePrompt(params: {
   const { project, range, date, promise } = params;
   const samples = promise.evidence.samples ?? [];
   const notes = promise.evidence.notes ?? [];
+  const proofGaps = promise.evidence.proof_gaps ?? [];
+  const receipts = promise.evidence.receipts ?? [];
   const notGreen = promise.status !== "held";
   const checkedAt = promise.checked_at ? `Checked at: ${promise.checked_at}` : null;
+  const repositories =
+    project === "ios-app"
+      ? [
+          "- iOS app: /Users/aditya/Documents/DarDocAppCodex/DarDoc",
+          "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
+          "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
+        ]
+      : [
+          "- Checkout app: /Users/aditya/Documents/checkout-dardoc",
+          "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
+          "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
+        ];
+
+  const receiptTimeline =
+    receipts.length > 0
+      ? receipts.map((receipt, index) => `${index + 1}. ${promiseReceiptLine(receipt)}`).join("\n")
+      : "No receipt timeline was attached. Treat the missing receipts as an evidence-engine defect, not as proof that nothing broke.";
 
   return [
     "You are Codex. Investigate and fix this Watchtower promise.",
@@ -324,6 +395,9 @@ function buildPromiseCasePrompt(params: {
     `Headline: ${promise.headline}`,
     checkedAt,
     "",
+    "Repositories:",
+    ...repositories,
+    "",
     "Why this matters:",
     notGreen
       ? `- Watchtower marked this promise ${promise.status}. Treat the product as not-green until the cause is fixed or deliberately reclassified with stronger evidence.`
@@ -335,17 +409,46 @@ function buildPromiseCasePrompt(params: {
     "Evidence notes:",
     notes.length > 0 ? notes.map((note) => `- ${note}`).join("\n") : "No notes attached.",
     "",
+    "Missing proof:",
+    proofGaps.length > 0 ? proofGaps.map((gap) => `- ${gap}`).join("\n") : "No declared proof gaps.",
+    "",
     "Sample journeys:",
     samples.length > 0 ? samples.map((sample, index) => `${index + 1}. ${sample}`).join("\n") : "No sample journeys attached.",
     "",
+    `Receipt timeline (${receipts.length} event${receipts.length === 1 ? "" : "s"}):`,
+    receiptTimeline,
+    "",
     "Fix brief:",
-    "- Open the Watchtower/backend/checkout code that produces this promise verdict and trace the evidence fields.",
+    "- Open the listed app, backend, and Watchtower repositories and trace the exact event names, request ids, and paths in the receipts.",
     "- If the customer experience is genuinely broken, patch the smallest product or backend path.",
-    "- If the verdict is stale, vague, or missing receipts, improve the classifier/evidence so future cases are unmissable.",
+    "- If the verdict is stale, vague, missing receipts, or has a proof gap, strengthen the evidence engine; never turn it green from absence of errors.",
     "- Verify by rerunning this promise window and confirming the status, headline, and evidence changed as intended.",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+function promiseReceiptLine(receipt: PromiseReceipt): string {
+  const requestId = typeof receipt.meta?.request_id === "string" ? receipt.meta.request_id : null;
+  return [
+    `event_id=${receipt.event_id}`,
+    receipt.client_event_id ? `client_event_id=${receipt.client_event_id}` : null,
+    requestId ? `request_id=${requestId}` : null,
+    `journey_id=${receipt.journey_id}`,
+    `source=${receipt.session_id === "backend-observer" || receipt.session_id === "server" ? "backend" : "client"}`,
+    `class=${receipt.cls}`,
+    `reason=${receipt.reason}`,
+    `name=${receipt.name}`,
+    receipt.http_status != null ? `http_status=${receipt.http_status}` : null,
+    receipt.error_code ? `error_code=${receipt.error_code}` : null,
+    receipt.path ? `path=${receipt.path}` : null,
+    receipt.surface ? `surface=${receipt.surface}` : null,
+    receipt.vertical ? `vertical=${receipt.vertical}` : null,
+    `observed_at=${receipt.observed_at}`,
+    `ingested_at=${receipt.ingested_at}`,
+  ]
+    .filter(Boolean)
+    .join(" | ");
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -422,6 +525,7 @@ function PromiseEvidenceRow({
   onOpen: (journeyId: string) => void;
 }) {
   const samples = promise.evidence.samples ?? [];
+  const receipts = promise.evidence.receipts ?? [];
   const casePrompt = buildPromiseCasePrompt({ project, range, date, promise });
   return (
     <div className="promise case-promise">
@@ -441,6 +545,11 @@ function PromiseEvidenceRow({
             ))}
           </div>
         )}
+        <div className="meta">
+          {receipts.length > 0
+            ? `${receipts.length} receipt${receipts.length === 1 ? "" : "s"} attached`
+            : "no receipt timeline attached"}
+        </div>
         <details className="meta">
           <summary>evidence</summary>
           <pre>{JSON.stringify({ statement: promise.statement, ...promise.evidence }, null, 2)}</pre>
@@ -522,6 +631,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
   const { project = "" } = useParams();
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [promises, setPromises] = useState<PromiseVerdictRow[] | null>(null);
+  const [promiseError, setPromiseError] = useState<string | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [journeys, setJourneys] = useState<JourneyRow[] | null>(null);
   const [cls, setCls] = useState<(typeof CLS_FILTERS)[number]>("all");
@@ -530,6 +640,8 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
 
   useEffect(() => {
     let alive = true;
+    setPromises(null);
+    setPromiseError(null);
     const load = () => {
       Promise.all([
         fetchSummary(range, date, project),
@@ -544,10 +656,19 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
         .catch((err: Error) => alive && setError(err.message));
       if (range === "all") {
         setPromises(null);
+        setPromiseError(null);
       } else {
         fetchPromises(date, project)
-          .then((r) => alive && setPromises(r.promises))
-          .catch(() => alive && setPromises(null));
+          .then((r) => {
+            if (!alive) return;
+            setPromises(r.promises);
+            setPromiseError(null);
+          })
+          .catch((err: Error) => {
+            if (!alive) return;
+            setPromises([]);
+            setPromiseError(err.message);
+          });
       }
       fetchFindings(range, date, project)
         .then((r) => alive && setFindings(r.findings))
@@ -576,7 +697,9 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
         </div>
       )}
 
-      {headline && <Headline h={headline} onPick={setCls} />}
+      {headline && (
+        <Headline h={headline} promises={promises} promiseError={promiseError} onPick={setCls} />
+      )}
 
       {findings && findings.length > 0 && (
         <div className="panel findings" style={{ marginBottom: 16 }}>
@@ -647,7 +770,13 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
             {promises === null && range === "all" && (
               <div className="empty">promises are judged per day — switch to Today or Yesterday</div>
             )}
-            {promises === null && range !== "all" && <Skeleton rows={5} />}
+            {promiseError && range !== "all" && (
+              <div className="empty">
+                <div className="big">promise catalog unavailable for {project}</div>
+                <div className="mono">{promiseError}</div>
+              </div>
+            )}
+            {!promiseError && promises === null && range !== "all" && <Skeleton rows={5} />}
             {promises?.map((p) => (
               <PromiseEvidenceRow
                 key={p.promise_id}
@@ -658,7 +787,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
                 onOpen={setOpen}
               />
             ))}
-            {promises !== null && promises.length === 0 && (
+            {!promiseError && promises !== null && promises.length === 0 && (
               <div className="empty">no promise catalog answered for this backend</div>
             )}
           </div>
