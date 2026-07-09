@@ -47,6 +47,20 @@ const REASON_LABEL: Record<string, string> = {
   payment_sheet_failed: "payment sheet failed to load",
   payment_stuck: "payment never came back",
   false_green_payment: "shown paid but money not captured",
+  // iOS app reasons
+  goal_rx_subscription_activated: "Rx subscription activated",
+  goal_consultation_booked: "consultation booked",
+  registration_completed: "finished signup",
+  user_cancelled_payment: "closed the payment sheet",
+  apple_pay_unavailable: "Apple Pay not available on device",
+  payment_result_timeout: "paid but app never saw confirmation",
+  rx_activation_pending: "paid, Rx activation still pending",
+  rx_checkout_not_complete: "Rx activation still processing",
+  auth_token_missing: "asked to sign in mid-action",
+  memory_warning: "device ran low on memory",
+  app_hang: "app froze",
+  app_crash: "app crashed",
+  checkout_create_failed: "checkout could not be created",
 };
 
 interface Headline {
