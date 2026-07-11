@@ -2,18 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
+  createRepairCase,
   fetchFindings,
   fetchJourneyEvents,
   fetchJourneys,
   fetchPromises,
+  fetchRepairCase,
   fetchSummary,
   windowDays,
+  type CreateRepairCaseRequest,
   type Finding,
   type Range,
   type JourneyEvent,
   type JourneyRow,
   type PromiseVerdictRow,
   type PromiseReceipt,
+  type RepairCase,
   type ReasonRow,
   type ReasonSample,
   type SummaryResponse,
@@ -510,12 +514,12 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   return copied;
 }
 
-function PrepareCaseButton({ prompt }: { prompt: string }) {
+function CopyCaseButton({ prompt }: { prompt: string }) {
   const [state, setState] = useState<"idle" | "copied" | "ready">("idle");
   return (
     <span className="casecopy">
       <button
-        className="casebtn"
+        className="casebtn casebtn-secondary"
         onClick={async (e) => {
           e.stopPropagation();
           const copied = await copyTextToClipboard(prompt);
@@ -527,7 +531,7 @@ function PrepareCaseButton({ prompt }: { prompt: string }) {
           window.setTimeout(() => setState("idle"), 1400);
         }}
       >
-        {state === "copied" ? "case copied" : state === "ready" ? "case ready" : "fix my case"}
+        {state === "copied" ? "copied" : state === "ready" ? "case ready" : "copy case"}
       </button>
       {state === "ready" && (
         <textarea
@@ -543,6 +547,65 @@ function PrepareCaseButton({ prompt }: { prompt: string }) {
         />
       )}
     </span>
+  );
+}
+
+const REPAIR_STATE_LABEL: Record<RepairCase["state"], string> = {
+  QUEUED: "queued",
+  CLAIMED: "investigating",
+  INVESTIGATED: "diagnosis ready",
+  NEEDS_HUMAN: "needs review",
+  STOPPED: "stopped",
+  RECOVERED: "recovered",
+};
+
+function RepairActions({ request, prompt }: { request?: CreateRepairCaseRequest; prompt: string }) {
+  const [repairCase, setRepairCase] = useState<RepairCase | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const active = repairCase?.state === "QUEUED" || repairCase?.state === "CLAIMED";
+
+  useEffect(() => {
+    if (!repairCase || !active) return;
+    let alive = true;
+    const refresh = () => {
+      fetchRepairCase(repairCase.case_id)
+        .then((result) => {
+          if (alive) setRepairCase(result.repair_case);
+        })
+        .catch(() => undefined);
+    };
+    const timer = window.setInterval(refresh, 4_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [repairCase?.case_id, active]);
+
+  return (
+    <div className="repair-actions">
+      {request && (
+        <button
+          className={`casebtn repairbtn ${repairCase ? `repair-${repairCase.state.toLowerCase()}` : ""}`}
+          disabled={busy || repairCase !== null}
+          title={repairCase ? `${repairCase.case_id} · risk ${repairCase.risk_tier}` : "Queue a read-only Codex investigation"}
+          onClick={(event) => {
+            event.stopPropagation();
+            setBusy(true);
+            setError(null);
+            createRepairCase(request)
+              .then((result) => setRepairCase(result.repair_case))
+              .catch((reason: Error) => setError(reason.message))
+              .finally(() => setBusy(false));
+          }}
+        >
+          {busy ? "queuing..." : repairCase ? REPAIR_STATE_LABEL[repairCase.state] : "fix my case"}
+        </button>
+      )}
+      <CopyCaseButton prompt={prompt} />
+      {repairCase && <span className="repair-id mono">{repairCase.case_id}</span>}
+      {error && <span className="repair-error mono">queue failed · {error}</span>}
+    </div>
   );
 }
 
@@ -566,7 +629,14 @@ function PromiseEvidenceRow({
   return (
     <div className="promise case-promise">
       <div className="promise-actions">
-        <PrepareCaseButton prompt={casePrompt} />
+        <RepairActions
+          request={
+            promise.status !== "held"
+              ? { kind: "promise", product: project, promise_id: promise.promise_id, date }
+              : undefined
+          }
+          prompt={casePrompt}
+        />
         <Chip cls={PROMISE_STATUS_CLS[promise.status]}>{promise.status}</Chip>
       </div>
       <div className="promise-main">
@@ -613,7 +683,14 @@ function ReasonEvidenceRow({
   return (
     <div className="reason-row">
       <div className="reason-actionbar">
-        <PrepareCaseButton prompt={casePrompt} />
+        <RepairActions
+          request={
+            range === "all"
+              ? undefined
+              : { kind: "reason", product: project, reason: reason.reason, cls: reason.cls, date }
+          }
+          prompt={casePrompt}
+        />
         <span className={`reason-count ${reason.cls}`}>
           {reason.n} {reason.n === 1 ? "event" : "events"}
         </span>

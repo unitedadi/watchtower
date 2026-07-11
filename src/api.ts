@@ -46,6 +46,25 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const response = (await res.json()) as { error?: unknown };
+      if (typeof response.error === "string" && response.error) detail = ` ${response.error}`;
+    } catch {
+      // Keep the status/path error when the response is not JSON.
+    }
+    throw new Error(`${res.status}${detail}`);
+  }
+  return (await res.json()) as T;
+}
+
 export interface ProjectSummary {
   project: string;
   green: number;
@@ -234,6 +253,41 @@ export interface Finding {
 export function fetchFindings(range: Range, date: string, product = "checkout-web"): Promise<{ findings: Finding[] }> {
   const q = new URLSearchParams({ product, ...windowParams(range, date) });
   return get(`/telemetry/findings?${q}`);
+}
+
+export type RepairCaseState =
+  | "QUEUED"
+  | "CLAIMED"
+  | "INVESTIGATED"
+  | "NEEDS_HUMAN"
+  | "STOPPED"
+  | "RECOVERED";
+
+export interface RepairCase {
+  case_id: string;
+  source_kind: "promise" | "reason";
+  product: string;
+  subject_id: string;
+  selected_date: string;
+  title: string;
+  observed_status: string;
+  headline: string;
+  risk_tier: "A" | "B" | "C";
+  state: RepairCaseState;
+  latest_summary: string | null;
+  updated_at: string;
+}
+
+export type CreateRepairCaseRequest =
+  | { kind: "promise"; product: string; promise_id: string; date: string }
+  | { kind: "reason"; product: string; reason: string; cls: "yellow" | "red"; date: string };
+
+export function createRepairCase(request: CreateRepairCaseRequest): Promise<{ repair_case: RepairCase; deduplicated: boolean }> {
+  return post("/api/repair-cases", request);
+}
+
+export function fetchRepairCase(caseId: string): Promise<{ repair_case: RepairCase }> {
+  return get(`/telemetry/repair-cases/${encodeURIComponent(caseId)}`);
 }
 
 export function todayDubai(): string {
