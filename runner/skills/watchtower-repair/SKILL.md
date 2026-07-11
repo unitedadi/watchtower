@@ -8,7 +8,7 @@ description: Check, stop, or retry a Watchtower repair case from WhatsApp. Use f
 Use the deterministic control script. Do not investigate or edit repositories from this skill.
 
 ```bash
-source /Users/mini/codex-runner/.env
+set -a; source /Users/mini/codex-runner/.env; set +a
 node /Users/mini/codex-runner/scripts/watchtower-repair-control.mjs status [CASE_ID]
 node /Users/mini/codex-runner/scripts/watchtower-repair-control.mjs stop CASE_ID
 node /Users/mini/codex-runner/scripts/watchtower-repair-control.mjs retry CASE_ID
