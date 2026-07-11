@@ -79,6 +79,8 @@ appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + 
       WATCHTOWER_REPAIR_RUNNER_TOKEN: "runner-test-token",
       WATCHTOWER_REPAIR_WHATSAPP_TARGET: "+971500000000",
       WATCHTOWER_REPAIR_CODEX_BIN: fakeCodex,
+      WATCHTOWER_REPAIR_CODEX_MODEL: "gpt-5.5",
+      WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT: "xhigh",
       WATCHTOWER_REPAIR_OPENCLAW_BIN: fakeOpenclaw,
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "state", "worker.lock"),
@@ -95,6 +97,8 @@ appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + 
     const codexArgs = JSON.parse(readFileSync(codexLog, "utf8"));
     assert.deepEqual(codexArgs.slice(0, 4), ["exec", "--sandbox", "read-only", "--ephemeral"]);
     assert.equal(codexArgs.includes("--dangerously-bypass-approvals-and-sandbox"), false);
+    assert.equal(codexArgs.includes("gpt-5.5"), true);
+    assert.equal(codexArgs.includes('model_reasoning_effort="xhigh"'), true);
     const whatsapp = readFileSync(whatsappLog, "utf8");
     assert.match(whatsapp, /investigating Synthetic failure/);
     assert.match(whatsapp, /diagnosis ready/);

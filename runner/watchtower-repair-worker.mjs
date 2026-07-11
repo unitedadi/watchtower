@@ -236,6 +236,9 @@ export async function runWorker(env = process.env) {
       cwd,
     ];
     if (env.WATCHTOWER_REPAIR_CODEX_MODEL) args.push("--model", env.WATCHTOWER_REPAIR_CODEX_MODEL);
+    if (env.WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT) {
+      args.push("-c", `model_reasoning_effort="${env.WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT}"`);
+    }
     args.push("-");
 
     const result = await runCommand(codexBin, args, {
