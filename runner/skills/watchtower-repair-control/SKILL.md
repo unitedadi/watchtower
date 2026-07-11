@@ -1,5 +1,5 @@
 ---
-name: watchtower-repair
+name: watchtower-repair-control
 description: Check, stop, or retry a Watchtower repair case from WhatsApp. Use for messages such as "Watchtower status", "status WT-...", "stop WT-...", or "retry WT-...".
 ---
 

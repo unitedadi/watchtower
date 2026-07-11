@@ -100,7 +100,10 @@ function reportSchema() {
       affected_paths: { type: "array", items: { type: "string" } },
       suggested_next_step: { type: "string" },
       proof_gaps: { type: "array", items: { type: "string" } },
-      requires_human: { type: "boolean" },
+      requires_human: {
+        type: "boolean",
+        description: "True only when the investigation itself cannot reach a useful diagnosis, not merely because a later repair needs approval.",
+      },
     },
   };
 }
@@ -108,7 +111,7 @@ function reportSchema() {
 function codexPrompt(repairCase) {
   const productRepo = PRODUCT_REPOS[repairCase.product] || "/Users/mini/Documents";
   return [
-    "Read /Users/mini/.codex/skills/watchtower-repair/SKILL.md first and follow it exactly.",
+    "Read /Users/mini/.codex/skills/watchtower-investigate/SKILL.md first and follow it exactly.",
     "",
     repairCase.case_prompt,
     "",
