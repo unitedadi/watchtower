@@ -46,25 +46,6 @@ async function get<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let detail = "";
-    try {
-      const response = (await res.json()) as { error?: unknown };
-      if (typeof response.error === "string" && response.error) detail = ` ${response.error}`;
-    } catch {
-      // Keep the status/path error when the response is not JSON.
-    }
-    throw new Error(`${res.status}${detail}`);
-  }
-  return (await res.json()) as T;
-}
-
 export interface ProjectSummary {
   project: string;
   green: number;
@@ -278,16 +259,13 @@ export interface RepairCase {
   updated_at: string;
 }
 
-export type CreateRepairCaseRequest =
-  | { kind: "promise"; product: string; promise_id: string; date: string }
-  | { kind: "reason"; product: string; reason: string; cls: "yellow" | "red"; date: string };
-
-export function createRepairCase(request: CreateRepairCaseRequest): Promise<{ repair_case: RepairCase; deduplicated: boolean }> {
-  return post("/api/repair-cases", request);
-}
-
 export function fetchRepairCase(caseId: string): Promise<{ repair_case: RepairCase }> {
   return get(`/telemetry/repair-cases/${encodeURIComponent(caseId)}`);
+}
+
+export function fetchRepairCases(product: string): Promise<{ repair_cases: RepairCase[] }> {
+  const query = new URLSearchParams({ product, limit: "200" });
+  return get(`/telemetry/repair-cases?${query}`);
 }
 
 export function todayDubai(): string {

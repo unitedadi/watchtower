@@ -83,6 +83,7 @@ appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + 
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "state", "worker.lock"),
       WATCHTOWER_REPAIR_WORKSPACE_ROOT: root,
+      WATCHTOWER_REPAIR_SKIP_SYNC: "true",
       FAKE_CODEX_LOG: codexLog,
       FAKE_WHATSAPP_LOG: whatsappLog,
     });

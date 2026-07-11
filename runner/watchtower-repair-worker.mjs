@@ -1,13 +1,15 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 
 const DEFAULT_API_BASE = "https://api-prod.dardoc.com";
 const DEFAULT_RUN_ROOT = "/Users/mini/codex-runner/runs/watchtower-repair";
 const DEFAULT_LOCK_PATH = "/Users/mini/codex-runner/state/watchtower-repair.lock";
 const BACKEND_REPO = "/Users/mini/codex-runner/repos/realbackend";
 const WATCHTOWER_REPO = "/Users/mini/codex-runner/repos/watchtower";
+const execFileAsync = promisify(execFile);
 
 const PRODUCT_REPOS = {
   "checkout-web": "/Users/mini/codex-runner/repos/checkout-dardoc",
@@ -88,6 +90,18 @@ async function sendWhatsApp(env, message) {
   ], { env });
 }
 
+async function syncMirror(path, branch, env) {
+  if (env.WATCHTOWER_REPAIR_SKIP_SYNC === "true") return;
+  if (!existsSync(join(path, ".git"))) throw new Error(`repair mirror missing: ${path}`);
+  const git = env.WATCHTOWER_REPAIR_GIT_BIN || "/usr/bin/git";
+  const options = { env, timeout: 120_000, maxBuffer: 2 * 1024 * 1024 };
+  const status = await execFileAsync(git, ["-C", path, "status", "--porcelain"], options);
+  if (status.stdout.trim()) throw new Error(`repair mirror is dirty: ${path}`);
+  await execFileAsync(git, ["-C", path, "fetch", "origin", "--prune", "--quiet"], options);
+  await execFileAsync(git, ["-C", path, "switch", branch, "--quiet"], options);
+  await execFileAsync(git, ["-C", path, "merge", "--ff-only", `origin/${branch}`, "--quiet"], options);
+}
+
 function reportSchema() {
   return {
     type: "object",
@@ -148,6 +162,36 @@ export async function runWorker(env = process.env) {
 
     const repairCase = claim.repair_case;
     const leaseToken = claim.lease_token;
+    try {
+      const mirrors = new Map([
+        [BACKEND_REPO, env.WATCHTOWER_REPAIR_BACKEND_BRANCH || "dev"],
+        [WATCHTOWER_REPO, "main"],
+        [PRODUCT_REPOS[repairCase.product], "main"],
+      ]);
+      for (const [path, branch] of mirrors) {
+        if (path) await syncMirror(path, branch, env);
+      }
+    } catch (error) {
+      const summary = `Repository mirror refresh failed: ${String(error?.message || error).slice(0, 500)}`;
+      const report = {
+        diagnosis: summary,
+        confidence: "high",
+        category: "operations",
+        affected_paths: [],
+        suggested_next_step: "Restore a clean, reachable repair mirror and retry this case.",
+        proof_gaps: ["Current source could not be verified before investigation."],
+        requires_human: true,
+      };
+      await apiRequest(env, `/telemetry/repair-worker/${encodeURIComponent(repairCase.case_id)}/complete`, {
+        worker_id: workerId,
+        lease_token: leaseToken,
+        outcome: "NEEDS_HUMAN",
+        summary,
+        report,
+      });
+      await sendWhatsApp(env, `Watchtower ${repairCase.case_id}: needs review. ${summary.slice(0, 260)}`);
+      return { status: "needs_human", case_id: repairCase.case_id };
+    }
     const runRoot = env.WATCHTOWER_REPAIR_RUN_ROOT || DEFAULT_RUN_ROOT;
     const runDir = join(runRoot, repairCase.case_id);
     mkdirSync(runDir, { recursive: true });

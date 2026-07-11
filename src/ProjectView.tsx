@@ -2,15 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import {
-  createRepairCase,
   fetchFindings,
   fetchJourneyEvents,
   fetchJourneys,
   fetchPromises,
   fetchRepairCase,
+  fetchRepairCases,
   fetchSummary,
   windowDays,
-  type CreateRepairCaseRequest,
   type Finding,
   type Range,
   type JourneyEvent,
@@ -559,19 +558,21 @@ const REPAIR_STATE_LABEL: Record<RepairCase["state"], string> = {
   RECOVERED: "recovered",
 };
 
-function RepairActions({ request, prompt }: { request?: CreateRepairCaseRequest; prompt: string }) {
-  const [repairCase, setRepairCase] = useState<RepairCase | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const active = repairCase?.state === "QUEUED" || repairCase?.state === "CLAIMED";
+function RepairActions({ repairCase, automatic, prompt }: { repairCase?: RepairCase; automatic: boolean; prompt: string }) {
+  const [current, setCurrent] = useState<RepairCase | null>(repairCase ?? null);
+  const active = current?.state === "QUEUED" || current?.state === "CLAIMED";
 
   useEffect(() => {
-    if (!repairCase || !active) return;
+    setCurrent(repairCase ?? null);
+  }, [repairCase?.case_id, repairCase?.state, repairCase?.updated_at]);
+
+  useEffect(() => {
+    if (!current || !active) return;
     let alive = true;
     const refresh = () => {
-      fetchRepairCase(repairCase.case_id)
+      fetchRepairCase(current.case_id)
         .then((result) => {
-          if (alive) setRepairCase(result.repair_case);
+          if (alive) setCurrent(result.repair_case);
         })
         .catch(() => undefined);
     };
@@ -580,32 +581,35 @@ function RepairActions({ request, prompt }: { request?: CreateRepairCaseRequest;
       alive = false;
       window.clearInterval(timer);
     };
-  }, [repairCase?.case_id, active]);
+  }, [current?.case_id, active]);
 
   return (
     <div className="repair-actions">
-      {request && (
-        <button
-          className={`casebtn repairbtn ${repairCase ? `repair-${repairCase.state.toLowerCase()}` : ""}`}
-          disabled={busy || repairCase !== null}
-          title={repairCase ? `${repairCase.case_id} · risk ${repairCase.risk_tier}` : "Queue a read-only Codex investigation"}
-          onClick={(event) => {
-            event.stopPropagation();
-            setBusy(true);
-            setError(null);
-            createRepairCase(request)
-              .then((result) => setRepairCase(result.repair_case))
-              .catch((reason: Error) => setError(reason.message))
-              .finally(() => setBusy(false));
-          }}
+      {automatic && (
+        <span
+          className={`repair-status ${current ? `repair-${current.state.toLowerCase()}` : "repair-pending"}`}
+          title={current ? `${current.case_id} · risk ${current.risk_tier}` : "Watchtower will create this case automatically"}
         >
-          {busy ? "queuing..." : repairCase ? REPAIR_STATE_LABEL[repairCase.state] : "fix my case"}
-        </button>
+          {current ? REPAIR_STATE_LABEL[current.state] : "auto-queue pending"}
+        </span>
       )}
       <CopyCaseButton prompt={prompt} />
-      {repairCase && <span className="repair-id mono">{repairCase.case_id}</span>}
-      {error && <span className="repair-error mono">queue failed · {error}</span>}
+      {current && <span className="repair-id mono">{current.case_id}</span>}
     </div>
+  );
+}
+
+function matchingRepairCase(
+  cases: RepairCase[],
+  sourceKind: RepairCase["source_kind"],
+  subjectId: string,
+  date: string,
+) {
+  return cases.find(
+    (repairCase) =>
+      repairCase.source_kind === sourceKind &&
+      repairCase.subject_id === subjectId &&
+      repairCase.selected_date === date,
   );
 }
 
@@ -614,12 +618,14 @@ function PromiseEvidenceRow({
   project,
   range,
   date,
+  repairCase,
   onOpen,
 }: {
   promise: PromiseVerdictRow;
   project: string;
   range: Range;
   date: string;
+  repairCase?: RepairCase;
   onOpen: (journeyId: string) => void;
 }) {
   const samples = Array.from(new Set(promise.evidence.samples ?? []));
@@ -630,11 +636,8 @@ function PromiseEvidenceRow({
     <div className="promise case-promise">
       <div className="promise-actions">
         <RepairActions
-          request={
-            promise.status !== "held"
-              ? { kind: "promise", product: project, promise_id: promise.promise_id, date }
-              : undefined
-          }
+          repairCase={repairCase}
+          automatic={promise.status !== "held"}
           prompt={casePrompt}
         />
         <Chip cls={PROMISE_STATUS_CLS[promise.status]}>{promise.status}</Chip>
@@ -670,12 +673,14 @@ function ReasonEvidenceRow({
   project,
   range,
   date,
+  repairCase,
   onOpen,
 }: {
   reason: ReasonRow;
   project: string;
   range: Range;
   date: string;
+  repairCase?: RepairCase;
   onOpen: (journeyId: string) => void;
 }) {
   const samples = reason.samples ?? [];
@@ -684,11 +689,8 @@ function ReasonEvidenceRow({
     <div className="reason-row">
       <div className="reason-actionbar">
         <RepairActions
-          request={
-            range === "all"
-              ? undefined
-              : { kind: "reason", product: project, reason: reason.reason, cls: reason.cls, date }
-          }
+          repairCase={repairCase}
+          automatic={range !== "all"}
           prompt={casePrompt}
         />
         <span className={`reason-count ${reason.cls}`}>
@@ -746,6 +748,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
   const [promises, setPromises] = useState<PromiseVerdictRow[] | null>(null);
   const [promiseError, setPromiseError] = useState<string | null>(null);
   const [findings, setFindings] = useState<Finding[] | null>(null);
+  const [repairCases, setRepairCases] = useState<RepairCase[]>([]);
   const [journeys, setJourneys] = useState<JourneyRow[] | null>(null);
   const [cls, setCls] = useState<(typeof CLS_FILTERS)[number]>("all");
   const [open, setOpen] = useState<string | null>(null);
@@ -786,6 +789,9 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
       fetchFindings(range, date, project)
         .then((r) => alive && setFindings(r.findings))
         .catch(() => alive && setFindings(null));
+      fetchRepairCases(project)
+        .then((r) => alive && setRepairCases(r.repair_cases))
+        .catch(() => alive && setRepairCases([]));
     };
     load();
     const timer = window.setInterval(load, 60_000);
@@ -901,6 +907,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
                 project={project}
                 range={range}
                 date={date}
+                repairCase={matchingRepairCase(repairCases, "promise", p.promise_id, date)}
                 onOpen={setOpen}
               />
             ))}
@@ -924,6 +931,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
                 project={project}
                 range={range}
                 date={date}
+                repairCase={matchingRepairCase(repairCases, "reason", `${r.cls}:${r.reason}`, date)}
                 onOpen={setOpen}
               />
             ))}
