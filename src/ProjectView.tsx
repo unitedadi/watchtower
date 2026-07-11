@@ -186,15 +186,18 @@ function FindingRow({ f, onOpen }: { f: Finding; onOpen: (j: string) => void }) 
 
 function Headline({
   h,
+  project,
   promises,
   promiseError,
   onPick,
 }: {
   h: Headline;
+  project: string;
   promises: PromiseVerdictRow[] | null;
   promiseError: string | null;
   onPick: (c: "all" | "red" | "green") => void;
 }) {
+  const ops = project === "ops-portal";
   const hasJourneys = h.total > 0;
   const brokenPromises = promises?.filter((promise) => promise.status === "broken").length ?? 0;
   const degradedPromises = promises?.filter((promise) => promise.status === "degraded").length ?? 0;
@@ -230,19 +233,19 @@ function Headline({
         </span>
         {hasJourneys ? (
           <span className="hl-line">
-            <b>{h.total}</b> sessions ·{" "}
+            <b>{h.total}</b> {ops ? "work journeys" : "sessions"} ·{" "}
             <button className="hl-num green" onClick={() => onPick("green")}>
-              {h.completed} completed
+              {h.completed} {ops ? "verified" : "completed"}
             </button>{" "}
             ·{" "}
             <button className="hl-num red" onClick={() => onPick("red")}>
               {h.broke.length} broke
             </button>{" "}
-            · <span className="faint">{h.bounced} opened &amp; left</span>
+            · <span className="faint">{h.bounced} {ops ? "unresolved" : "opened & left"}</span>
           </span>
         ) : (
           <span className="hl-line">
-            <b>0</b> sessions · no customer evidence in this selected window
+            <b>0</b> {ops ? "work journeys · no captured CX work" : "sessions · no customer evidence in this selected window"}
           </span>
         )}
       </div>
@@ -294,6 +297,28 @@ function reasonLabel(reason: string): string {
   return REASON_LABEL[reason] ?? reason.replace(/_/g, " ");
 }
 
+function projectRepositories(project: string): string[] {
+  if (project === "ios-app") {
+    return [
+      "- iOS app: /Users/aditya/Documents/DarDocAppCodex/DarDoc",
+      "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
+      "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
+    ];
+  }
+  if (project === "ops-portal") {
+    return [
+      "- Ops Portal: /Users/aditya/Documents/dardoc-ops-portal",
+      "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
+      "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
+    ];
+  }
+  return [
+    "- Checkout app: /Users/aditya/Documents/checkout-dardoc",
+    "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
+    "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
+  ];
+}
+
 function receiptStatusCls(sample: ReasonSample): string {
   if (!sample.http_status) return "";
   return sample.http_status >= 400 ? "st-bad" : "st-ok";
@@ -336,6 +361,9 @@ function buildProblemCasePrompt(params: { project: string; range: Range; date: s
     `Observed count: ${reason.n} event${reason.n === 1 ? "" : "s"}`,
     `Receipt samples included: ${samples.length}`,
     "",
+    "Repositories:",
+    ...projectRepositories(project),
+    "",
     "What happened:",
     `- Watchtower classified ${reason.n} event${reason.n === 1 ? "" : "s"} as ${reason.cls} for ${reason.reason}.`,
     "- Treat this as not-green until the exact cause is understood and either fixed or deliberately reclassified with evidence.",
@@ -344,8 +372,10 @@ function buildProblemCasePrompt(params: { project: string; range: Range; date: s
     receipts,
     "",
     "Fix brief:",
-    "- Open the relevant checkout/frontend/backend code and trace the exact request or event names in the receipts.",
-    "- Reproduce or explain why the customer hit this condition.",
+    "- Open the listed product, backend, and Watchtower repositories and trace the exact request or event names in the receipts.",
+    project === "ops-portal"
+      ? "- Reproduce or explain why the CX action failed or why the displayed state disagreed with source truth."
+      : "- Reproduce or explain why the customer hit this condition.",
     "- Patch the smallest code path that prevents the broken or misleading experience.",
     "- Add/adjust focused tests or telemetry classification only if that is required to prevent missing this again.",
     "- Verify against the same receipt shape before marking the case done.",
@@ -359,29 +389,31 @@ function buildPromiseCasePrompt(params: {
   promise: PromiseVerdictRow;
 }): string {
   const { project, range, date, promise } = params;
-  const samples = promise.evidence.samples ?? [];
+  const samples = Array.from(new Set(promise.evidence.samples ?? []));
   const notes = promise.evidence.notes ?? [];
   const proofGaps = promise.evidence.proof_gaps ?? [];
   const receipts = promise.evidence.receipts ?? [];
+  const sourceReceipts = promise.evidence.source_receipts ?? [];
   const notGreen = promise.status !== "held";
   const checkedAt = promise.checked_at ? `Checked at: ${promise.checked_at}` : null;
-  const repositories =
-    project === "ios-app"
-      ? [
-          "- iOS app: /Users/aditya/Documents/DarDocAppCodex/DarDoc",
-          "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
-          "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
-        ]
-      : [
-          "- Checkout app: /Users/aditya/Documents/checkout-dardoc",
-          "- Backend and promise engine: /Users/aditya/Documents/RealBackend-dev-clean",
-          "- Watchtower UI: /Users/aditya/Documents/DarDocWatchtower",
-        ];
+  const repositories = projectRepositories(project);
 
   const receiptTimeline =
     receipts.length > 0
       ? receipts.map((receipt, index) => `${index + 1}. ${promiseReceiptLine(receipt)}`).join("\n")
-      : "No receipt timeline was attached. Treat the missing receipts as an evidence-engine defect, not as proof that nothing broke.";
+      : sourceReceipts.length > 0
+        ? "No client event timeline applies to this independent source-truth invariant; use the source receipts below."
+        : "No receipt timeline was attached. Treat the missing receipts as an evidence-engine defect, not as proof that nothing broke.";
+
+  const sourceReceiptTimeline =
+    sourceReceipts.length > 0
+      ? sourceReceipts
+          .map((receipt, index) =>
+            `${index + 1}. source=${receipt.source} | subject=${receipt.subject}` +
+            `${receipt.observed_at ? ` | observed_at=${receipt.observed_at}` : ""} | facts=${JSON.stringify(receipt.facts)}`,
+          )
+          .join("\n")
+      : "No independent source-truth receipts attached.";
 
   return [
     "You are Codex. Investigate and fix this Watchtower promise.",
@@ -417,6 +449,9 @@ function buildPromiseCasePrompt(params: {
     "",
     `Receipt timeline (${receipts.length} event${receipts.length === 1 ? "" : "s"}):`,
     receiptTimeline,
+    "",
+    `Source-truth receipts (${sourceReceipts.length}):`,
+    sourceReceiptTimeline,
     "",
     "Fix brief:",
     "- Open the listed app, backend, and Watchtower repositories and trace the exact event names, request ids, and paths in the receipts.",
@@ -524,8 +559,9 @@ function PromiseEvidenceRow({
   date: string;
   onOpen: (journeyId: string) => void;
 }) {
-  const samples = promise.evidence.samples ?? [];
+  const samples = Array.from(new Set(promise.evidence.samples ?? []));
   const receipts = promise.evidence.receipts ?? [];
+  const sourceReceipts = promise.evidence.source_receipts ?? [];
   const casePrompt = buildPromiseCasePrompt({ project, range, date, promise });
   return (
     <div className="promise case-promise">
@@ -546,8 +582,8 @@ function PromiseEvidenceRow({
           </div>
         )}
         <div className="meta">
-          {receipts.length > 0
-            ? `${receipts.length} receipt${receipts.length === 1 ? "" : "s"} attached`
+          {receipts.length > 0 || sourceReceipts.length > 0
+            ? `${receipts.length} event receipt${receipts.length === 1 ? "" : "s"} · ${sourceReceipts.length} source receipt${sourceReceipts.length === 1 ? "" : "s"}`
             : "no receipt timeline attached"}
         </div>
         <details className="meta">
@@ -698,7 +734,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
       )}
 
       {headline && (
-        <Headline h={headline} promises={promises} promiseError={promiseError} onPick={setCls} />
+        <Headline h={headline} project={project} promises={promises} promiseError={promiseError} onPick={setCls} />
       )}
 
       {findings && findings.length > 0 && (
@@ -723,9 +759,13 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
       {totals && (
         <div className="kpis">
           <div className="kpi">
-            <div className="l">Completed</div>
+            <div className="l">{project === "ops-portal" ? "Verified" : "Completed"}</div>
             <div className="v green">{headline ? headline.completed : totals.green}</div>
-            <div className="s">{totals.friction > 0 ? `${cleanGreen} clean · ${totals.friction} w/ friction` : "reached checkout"}</div>
+            <div className="s">
+              {totals.friction > 0
+                ? `${cleanGreen} clean · ${totals.friction} w/ friction`
+                : project === "ops-portal" ? "source-backed outcome" : "reached checkout"}
+            </div>
           </div>
           <div className="kpi">
             <div className="l">Broke</div>
@@ -738,9 +778,9 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
             <div className="s">named friction</div>
           </div>
           <div className="kpi">
-            <div className="l">Opened &amp; left</div>
+            <div className="l">{project === "ops-portal" ? "Unresolved" : "Opened & left"}</div>
             <div className="v">{headline ? headline.bounced : 0}</div>
-            <div className="s">no action taken</div>
+            <div className="s">{project === "ops-portal" ? "no terminal outcome" : "no action taken"}</div>
           </div>
           <div className="kpi">
             <div className="l">Unknown</div>
@@ -753,7 +793,7 @@ export function ProjectView({ range, date }: { range: Range; date: string }) {
             <div className="s">in flight now</div>
           </div>
           <div className="kpi">
-            <div className="l">Unseen intents</div>
+            <div className="l">{project === "ops-portal" ? "Capture gaps" : "Unseen intents"}</div>
             <div className="v">{summary?.missing_journeys ?? 0}</div>
             <div className="s">capture gap</div>
           </div>

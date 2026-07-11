@@ -169,8 +169,16 @@ export interface PromiseVerdictRow {
     notes?: string[];
     proof_gaps?: string[];
     receipts?: PromiseReceipt[];
+    source_receipts?: PromiseSourceReceipt[];
   };
   checked_at?: string;
+}
+
+export interface PromiseSourceReceipt {
+  source: string;
+  subject: string;
+  observed_at?: string | null;
+  facts: Record<string, unknown>;
 }
 
 export interface PromiseReceipt {

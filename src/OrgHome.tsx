@@ -21,7 +21,6 @@ const PROJECT_LABELS: Record<string, string> = {
 
 const COMING: Array<{ id: string; label: string }> = [
   { id: "ios-app", label: "iOS App" },
-  { id: "ops-portal", label: "Ops Portal" },
 ];
 
 function emptySummaryCopy(range: Range, date: string): { title: string; body: string } {
@@ -171,6 +170,20 @@ export function OrgHome({ range, date }: { range: Range; date: string }) {
               </div>
             </div>
           ))}
+        {summary !== null && !live.has("ops-portal") && (
+          <Link to="/p/ops-portal" className="tile">
+            <div className="name">
+              Ops Portal
+              <span className="rate">0 witnessed</span>
+            </div>
+            <div className="chips">
+              <Chip cls="info">promise board ready</Chip>
+            </div>
+            <div className="faint small mono" style={{ marginTop: 24 }}>
+              awaiting the first captured CX session
+            </div>
+          </Link>
+        )}
         {summary && summary.projects.length === 0 && (
           <div className="panel empty" style={{ gridColumn: "1 / -1" }}>
             <div className="big">{emptyCopy.title}</div>
