@@ -569,6 +569,114 @@ const REPAIR_PHASE_LABEL: Partial<Record<RepairCase["phase"], string>> = {
   VERIFYING: "verifying recovery",
 };
 
+type ReportValue = Record<string, unknown>;
+
+function reportObject(value: unknown): ReportValue | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as ReportValue : null;
+}
+
+function reportStrings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+function RepairReport({ repairCase }: { repairCase: RepairCase }) {
+  const report = reportObject(repairCase.latest_report);
+  if (!report && !repairCase.latest_summary) return null;
+
+  const diagnosis = reportObject(report?.diagnosis) ?? report;
+  const repair = reportObject(report?.repair);
+  const release = reportObject(report?.release);
+  const evidence = Array.isArray(diagnosis?.decisive_evidence)
+    ? diagnosis.decisive_evidence.map(reportObject).filter((item): item is ReportValue => item !== null)
+    : [];
+  const tests = Array.isArray(release?.tests)
+    ? release.tests.map(reportObject).filter((item): item is ReportValue => item !== null)
+    : Array.isArray(repair?.tests_run)
+      ? repair.tests_run.map(reportObject).filter((item): item is ReportValue => item !== null)
+      : [];
+  const blocker = [
+    report?.execution_error,
+    repair?.blocker,
+    diagnosis?.blocker,
+    repairCase.state === "NEEDS_HUMAN" ? repairCase.latest_summary : null,
+  ].find((value): value is string => typeof value === "string" && value.length > 0);
+  const solution = typeof repair?.solution === "string" && repair.solution.length > 0
+    ? repair.solution
+    : reportStrings(diagnosis?.repair_plan)[0];
+  const risks = [...reportStrings(diagnosis?.proof_gaps), ...reportStrings(repair?.remaining_risks)];
+
+  return (
+    <details className="repair-report">
+      <summary>view repair report</summary>
+      <div className="repair-report-body">
+        {typeof diagnosis?.customer_impact === "string" && (
+          <section>
+            <div className="repair-report-label">Customer impact</div>
+            <p>{diagnosis.customer_impact}</p>
+          </section>
+        )}
+        {typeof diagnosis?.root_cause === "string" && (
+          <section>
+            <div className="repair-report-label">Root cause</div>
+            <p>{diagnosis.root_cause}</p>
+          </section>
+        )}
+        {evidence.length > 0 && (
+          <section>
+            <div className="repair-report-label">Decisive evidence</div>
+            <ul>
+              {evidence.map((item, index) => (
+                <li key={`${String(item.receipt ?? "receipt")}-${index}`}>
+                  {String(item.fact ?? "Evidence attached")}
+                  {item.receipt ? <span className="mono"> {String(item.receipt)}</span> : null}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {solution && (
+          <section>
+            <div className="repair-report-label">Solution</div>
+            <p>{solution}</p>
+          </section>
+        )}
+        {blocker && repairCase.state === "NEEDS_HUMAN" && (
+          <section className="repair-report-blocker">
+            <div className="repair-report-label">Why it stopped</div>
+            <p>{blocker}</p>
+          </section>
+        )}
+        {tests.length > 0 && (
+          <section>
+            <div className="repair-report-label">Tests</div>
+            <ul>
+              {tests.map((test, index) => (
+                <li key={`${String(test.command ?? "test")}-${index}`}>
+                  <span className="mono">{String(test.command ?? "validation")}</span>: {String(test.result ?? "recorded")}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+        {release && Boolean(release.commit || release.branch) && (
+          <section>
+            <div className="repair-report-label">Patch</div>
+            {release.commit ? <p className="mono">commit {String(release.commit)}</p> : null}
+            {release.branch ? <p className="mono">branch {String(release.branch)}</p> : null}
+          </section>
+        )}
+        {risks.length > 0 && (
+          <section>
+            <div className="repair-report-label">Still owed</div>
+            <ul>{risks.map((risk) => <li key={risk}>{risk}</li>)}</ul>
+          </section>
+        )}
+        {!report && repairCase.latest_summary && <p>{repairCase.latest_summary}</p>}
+      </div>
+    </details>
+  );
+}
+
 function RepairActions({ repairCase, automatic, prompt }: { repairCase?: RepairCase; automatic: boolean; prompt: string }) {
   const [current, setCurrent] = useState<RepairCase | null>(repairCase ?? null);
   const active = current?.state === "QUEUED" || current?.state === "CLAIMED";
@@ -605,6 +713,7 @@ function RepairActions({ repairCase, automatic, prompt }: { repairCase?: RepairC
         </span>
       )}
       <CopyCaseButton prompt={prompt} />
+      {current && <RepairReport repairCase={current} />}
       {current && <span className="repair-id mono">{current.case_id}</span>}
     </div>
   );
