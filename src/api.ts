@@ -240,6 +240,8 @@ export type RepairCaseState =
   | "QUEUED"
   | "CLAIMED"
   | "INVESTIGATED"
+  | "PATCH_READY"
+  | "SHIPPED"
   | "NEEDS_HUMAN"
   | "STOPPED"
   | "RECOVERED";
@@ -255,7 +257,9 @@ export interface RepairCase {
   headline: string;
   risk_tier: "A" | "B" | "C";
   state: RepairCaseState;
+  phase: "QUEUED" | "INVESTIGATING" | "REPAIRING" | "TESTING" | "PATCH_READY" | "DEPLOYING" | "VERIFYING" | "DONE" | "BLOCKED";
   latest_summary: string | null;
+  latest_report: Record<string, unknown> | null;
   updated_at: string;
 }
 

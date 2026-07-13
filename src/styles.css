@@ -275,12 +275,22 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
 }
 .repair-pending { background: var(--gray-bg); color: var(--muted); }
 .repair-queued, .repair-claimed { background: var(--info-bg); color: var(--info); }
-.repair-investigated, .repair-recovered {
+.repair-patch_ready {
+  border-color: rgba(122, 167, 247, 0.55);
+  background: var(--info-bg);
+  color: var(--info);
+}
+.repair-shipped {
+  border-color: rgba(230, 174, 74, 0.5);
+  background: var(--amber-bg);
+  color: var(--amber);
+}
+.repair-recovered {
   border-color: rgba(76, 195, 138, 0.5);
   background: var(--green-bg);
   color: var(--green);
 }
-.repair-needs_human, .repair-stopped {
+.repair-investigated, .repair-needs_human, .repair-stopped {
   border-color: var(--line-strong);
   background: var(--gray-bg);
   color: var(--muted);

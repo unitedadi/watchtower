@@ -551,11 +551,22 @@ function CopyCaseButton({ prompt }: { prompt: string }) {
 
 const REPAIR_STATE_LABEL: Record<RepairCase["state"], string> = {
   QUEUED: "queued",
-  CLAIMED: "investigating",
-  INVESTIGATED: "diagnosis ready",
-  NEEDS_HUMAN: "needs review",
+  CLAIMED: "in progress",
+  INVESTIGATED: "diagnosis only",
+  PATCH_READY: "tested patch ready",
+  SHIPPED: "fix shipped",
+  NEEDS_HUMAN: "blocked — not fixed",
   STOPPED: "stopped",
   RECOVERED: "recovered",
+};
+
+const REPAIR_PHASE_LABEL: Partial<Record<RepairCase["phase"], string>> = {
+  INVESTIGATING: "tracing evidence",
+  REPAIRING: "repairing",
+  TESTING: "testing repair",
+  PATCH_READY: "tested patch ready",
+  DEPLOYING: "deploying",
+  VERIFYING: "verifying recovery",
 };
 
 function RepairActions({ repairCase, automatic, prompt }: { repairCase?: RepairCase; automatic: boolean; prompt: string }) {
@@ -588,9 +599,9 @@ function RepairActions({ repairCase, automatic, prompt }: { repairCase?: RepairC
       {automatic && (
         <span
           className={`repair-status ${current ? `repair-${current.state.toLowerCase()}` : "repair-pending"}`}
-          title={current ? `${current.case_id} · risk ${current.risk_tier}` : "Watchtower will create this case automatically"}
+          title={current ? `${current.case_id} · risk ${current.risk_tier}${current.latest_summary ? ` · ${current.latest_summary}` : ""}` : "Watchtower will create this case automatically"}
         >
-          {current ? REPAIR_STATE_LABEL[current.state] : "auto-queue pending"}
+          {current ? (current.state === "CLAIMED" ? REPAIR_PHASE_LABEL[current.phase] ?? REPAIR_STATE_LABEL[current.state] : REPAIR_STATE_LABEL[current.state]) : "auto-queue pending"}
         </span>
       )}
       <CopyCaseButton prompt={prompt} />
