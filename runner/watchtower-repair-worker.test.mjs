@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
+import { sendWhatsApp } from "./watchtower-repair-worker.mjs";
+
 function run(command, args, env) {
   return new Promise((resolve) => {
     const child = spawn(command, args, { env, stdio: ["ignore", "ignore", "pipe"] });
@@ -20,7 +22,7 @@ test("worker claims exactly one case and submits a read-only structured diagnosi
   const codexLog = join(root, "codex-args.json");
   const whatsappLog = join(root, "whatsapp.log");
   const fakeCodex = join(root, "fake-codex.mjs");
-  const fakeOpenclaw = join(root, "fake-openclaw.mjs");
+  const fakeWacli = join(root, "fake-wacli.mjs");
   writeFileSync(
     fakeCodex,
     `#!/usr/bin/env node
@@ -32,14 +34,15 @@ writeFileSync(output, JSON.stringify({ diagnosis: "The classifier lacks a receip
 `,
   );
   writeFileSync(
-    fakeOpenclaw,
+    fakeWacli,
     `#!/usr/bin/env node
 import { appendFileSync } from "node:fs";
 appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + "\\n");
+process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
 `,
   );
   chmodSync(fakeCodex, 0o755);
-  chmodSync(fakeOpenclaw, 0o755);
+  chmodSync(fakeWacli, 0o755);
 
   let claimed = false;
   let completion = null;
@@ -81,7 +84,7 @@ appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + 
       WATCHTOWER_REPAIR_CODEX_BIN: fakeCodex,
       WATCHTOWER_REPAIR_CODEX_MODEL: "gpt-5.5",
       WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT: "xhigh",
-      WATCHTOWER_REPAIR_OPENCLAW_BIN: fakeOpenclaw,
+      WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "state", "worker.lock"),
       WATCHTOWER_REPAIR_WORKSPACE_ROOT: root,
@@ -100,9 +103,31 @@ appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + 
     assert.equal(codexArgs.includes("gpt-5.5"), true);
     assert.equal(codexArgs.includes('model_reasoning_effort="xhigh"'), true);
     const whatsapp = readFileSync(whatsappLog, "utf8");
+    assert.match(whatsapp, /send text --to \+971500000000/);
     assert.match(whatsapp, /investigating Synthetic failure/);
     assert.match(whatsapp, /diagnosis ready/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("WhatsApp delivery failure is surfaced", async () => {
+  const root = mkdtempSync(join(tmpdir(), "watchtower-whatsapp-failure-"));
+  const fakeWacli = join(root, "fake-wacli.mjs");
+  writeFileSync(
+    fakeWacli,
+    `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({ success: false, error: "not_connected" }));
+`,
+  );
+  chmodSync(fakeWacli, 0o755);
+
+  await assert.rejects(
+    sendWhatsApp({
+      ...process.env,
+      WATCHTOWER_REPAIR_WHATSAPP_TARGET: "+971500000000",
+      WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
+    }, "Watchtower test"),
+    /WhatsApp send failed: not_connected/,
+  );
 });

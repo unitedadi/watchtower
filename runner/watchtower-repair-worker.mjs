@@ -72,22 +72,29 @@ function runCommand(command, args, options = {}) {
   });
 }
 
-async function sendWhatsApp(env, message) {
-  const target = String(env.WATCHTOWER_REPAIR_WHATSAPP_TARGET || "").trim();
-  if (!target) return;
-  const binary = env.WATCHTOWER_REPAIR_OPENCLAW_BIN || "/opt/homebrew/bin/openclaw";
-  await runCommand(binary, [
-    "message",
+export async function sendWhatsApp(env, message) {
+  if (env.WATCHTOWER_REPAIR_WHATSAPP_DISABLED === "true") return;
+  const target = required(env, "WATCHTOWER_REPAIR_WHATSAPP_TARGET");
+  const binary = env.WATCHTOWER_REPAIR_WACLI_BIN || "/Users/mini/.local/bin/wacli";
+  const { stdout } = await execFileAsync(binary, [
+    "--lock-wait",
+    "15s",
+    "--timeout",
+    "60s",
+    "--json",
     "send",
-    "--channel",
-    "whatsapp",
-    "--account",
-    "default",
-    "--target",
+    "text",
+    "--to",
     target,
     "--message",
     message,
-  ], { env });
+    "--post-send-wait",
+    "0s",
+  ], { env, timeout: 75_000, maxBuffer: 1024 * 1024 });
+  const result = JSON.parse(stdout || "{}");
+  if (result?.success !== true || result?.data?.sent !== true) {
+    throw new Error(`WhatsApp send failed: ${result?.error || "message was not sent"}`);
+  }
 }
 
 async function syncMirror(path, branch, env) {
