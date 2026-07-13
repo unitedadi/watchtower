@@ -9,6 +9,7 @@ const DEFAULT_RUN_ROOT = "/Users/mini/codex-runner/runs/watchtower-repair";
 const DEFAULT_LOCK_PATH = "/Users/mini/codex-runner/state/watchtower-repair.lock";
 const DEFAULT_BACKEND_REPO = "/Users/mini/codex-runner/repos/realbackend";
 const DEFAULT_WATCHTOWER_REPO = "/Users/mini/codex-runner/repos/watchtower";
+const DEFAULT_GITHUB_ISSUE_REPO = "unitedadi/DarDocCodexControlPlane";
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_PRODUCT_REPOS = {
@@ -122,6 +123,132 @@ export async function sendWhatsApp(env, message) {
   const result = JSON.parse(stdout || "{}");
   if (result?.success !== true || result?.data?.sent !== true) {
     throw new Error(`WhatsApp send failed: ${result?.error || "message was not sent"}`);
+  }
+}
+
+function issueLine(issue) {
+  return issue?.url ? `Issue: ${issue.url}` : "Issue: not created";
+}
+
+function initialIssueBody(repairCase) {
+  const evidence = JSON.stringify(repairCase.evidence ?? {}, null, 2).slice(0, 30_000);
+  return [
+    "# Watchtower: not green",
+    "",
+    `**Case:** ${repairCase.case_id}`,
+    `**Product:** ${repairCase.product}`,
+    `**Window:** ${repairCase.selected_date || "not supplied"}`,
+    `**Observed status:** ${repairCase.observed_status || "not green"}`,
+    `**Risk tier:** ${repairCase.risk_tier || "not supplied"}`,
+    "",
+    "## Customer-facing promise",
+    repairCase.statement || repairCase.title,
+    "",
+    "## What Watchtower observed",
+    repairCase.headline,
+    "",
+    "## Evidence at detection",
+    "```json",
+    evidence,
+    "```",
+    "",
+    "## Repair contract",
+    "- Prove the exact customer impact and root cause from decisive receipts.",
+    "- Make the smallest focused change and run deterministic validation.",
+    "- Keep this issue open while a patch is merely prepared or shipped.",
+    "- Close only after Watchtower independently observes the promise recover.",
+    "",
+    "_This issue is maintained automatically by Watchtower._",
+  ].join("\n");
+}
+
+function diagnosisIssueComment(diagnosis, repairable) {
+  const evidence = (diagnosis.decisive_evidence ?? [])
+    .map((item) => `- ${compact(item.fact, 1_000)} (${compact(item.receipt, 500)})`)
+    .join("\n") || "- No decisive receipt attached.";
+  return [
+    `## ${repairable ? "Root cause proven" : "Automation blocked"}`,
+    "",
+    `**Customer impact:** ${diagnosis.customer_impact}`,
+    "",
+    `**Root cause:** ${diagnosis.root_cause}`,
+    "",
+    `**Confidence:** ${diagnosis.confidence}`,
+    `**Category:** ${diagnosis.category}`,
+    `**Repair owner:** ${diagnosis.repair_target}`,
+    "",
+    "### Decisive evidence",
+    evidence,
+    "",
+    "### Repair plan",
+    listLines(diagnosis.repair_plan, 10) || "- No safe repair plan was proven.",
+    "",
+    "### Verification plan",
+    listLines(diagnosis.verification_plan, 10) || "- No verification plan was supplied.",
+    diagnosis.proof_gaps?.length ? `\n### Missing proof\n${listLines(diagnosis.proof_gaps, 10)}` : "",
+    !repairable ? `\n**Why automation stopped:** ${diagnosis.blocker || "High-confidence autofix gate was not met."}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function patchIssueComment(diagnosis, repair, release) {
+  return [
+    "## Tested patch ready",
+    "",
+    `**Root cause:** ${diagnosis.root_cause}`,
+    "",
+    `**Solution:** ${repair.solution}`,
+    "",
+    `**Changed files:** ${release.changed_files.join(", ")}`,
+    "",
+    "### Required validation",
+    release.tests.map((test) => `- \`${test.command}\`: **${test.result}**`).join("\n"),
+    "",
+    `**Commit:** \`${release.commit}\``,
+    `**Branch:** \`${release.branch}\``,
+    "",
+    "This issue remains open. A tested patch is not the same as a deployed and independently verified recovery.",
+  ].join("\n");
+}
+
+async function assertPrivateIssueRepository(env, repository) {
+  const gh = env.WATCHTOWER_REPAIR_GH_BIN || "/opt/homebrew/bin/gh";
+  const result = await runCaptured(gh, ["repo", "view", repository, "--json", "visibility", "--jq", ".visibility"], { env, timeout: 60_000 });
+  if (result.code !== 0) throw new Error(`GitHub issue repository check failed: ${compact(result.stderr || result.stdout)}`);
+  if (result.stdout.trim() !== "PRIVATE") throw new Error(`GitHub issue repository must be private: ${repository}`);
+}
+
+async function ensureGitHubIssue(env, repairCase, runDir) {
+  const repository = repairCase.github_issue_repository || env.WATCHTOWER_REPAIR_GITHUB_REPO || DEFAULT_GITHUB_ISSUE_REPO;
+  await assertPrivateIssueRepository(env, repository);
+  if (repairCase.github_issue_url && repairCase.github_issue_number) {
+    return { repository, number: Number(repairCase.github_issue_number), url: repairCase.github_issue_url };
+  }
+  const bodyPath = join(runDir, "github-issue.md");
+  writeFileSync(bodyPath, initialIssueBody(repairCase));
+  const gh = env.WATCHTOWER_REPAIR_GH_BIN || "/opt/homebrew/bin/gh";
+  const title = `[Watchtower][${repairCase.case_id}] ${repairCase.product}: ${compact(repairCase.title, 140)}`;
+  const result = await runCaptured(gh, ["issue", "create", "--repo", repository, "--title", title, "--body-file", bodyPath], { env, timeout: 60_000 });
+  if (result.code !== 0) throw new Error(`GitHub issue creation failed: ${compact(result.stderr || result.stdout)}`);
+  const url = result.stdout.trim().split(/\s+/).find((value) => /^https:\/\//.test(value));
+  const number = Number(url?.match(/\/issues\/(\d+)(?:$|[/?#])/)?.[1]);
+  if (!url || !Number.isInteger(number) || number <= 0) throw new Error("GitHub issue creation did not return an issue URL.");
+  return { repository, number, url };
+}
+
+async function commentOnGitHubIssue(env, issue, runDir, name, body) {
+  const bodyPath = join(runDir, `${name}.md`);
+  writeFileSync(bodyPath, body);
+  const gh = env.WATCHTOWER_REPAIR_GH_BIN || "/opt/homebrew/bin/gh";
+  const result = await runCaptured(gh, ["issue", "comment", String(issue.number), "--repo", issue.repository, "--body-file", bodyPath], { env, timeout: 60_000 });
+  if (result.code !== 0) throw new Error(`GitHub issue update failed: ${compact(result.stderr || result.stdout)}`);
+}
+
+async function tryCommentOnGitHubIssue(env, issue, runDir, name, body) {
+  try {
+    await commentOnGitHubIssue(env, issue, runDir, name, body);
+    return null;
+  } catch (error) {
+    return compact(error?.message || error, 1_500);
   }
 }
 
@@ -252,17 +379,18 @@ function listLines(values, limit = 3) {
   return (Array.isArray(values) ? values : []).slice(0, limit).map((value) => `- ${compact(value, 500)}`).join("\n");
 }
 
-export function detectedMessage(repairCase) {
+export function detectedMessage(repairCase, issue) {
   return [
     "WATCHTOWER: NOT GREEN",
     `${repairCase.product} | ${repairCase.title}`,
     `Observed: ${compact(repairCase.headline, 700)}`,
     `Case: ${repairCase.case_id}`,
+    issueLine(issue),
     "Status: tracing exact receipts and code path",
   ].join("\n");
 }
 
-export function rootCauseMessage(repairCase, diagnosis) {
+export function rootCauseMessage(repairCase, diagnosis, issue) {
   const evidence = diagnosis.decisive_evidence?.slice(0, 2).map((item) => `- ${compact(item.fact, 450)} (${compact(item.receipt, 220)})`).join("\n");
   return [
     `WATCHTOWER: ROOT CAUSE PROVEN (${String(diagnosis.confidence).toUpperCase()})`,
@@ -272,10 +400,11 @@ export function rootCauseMessage(repairCase, diagnosis) {
     evidence ? `Evidence:\n${evidence}` : "Evidence: no decisive receipt attached",
     `Repair: ${compact(diagnosis.repair_plan?.[0] || diagnosis.blocker || "No repair defined")}`,
     `Case: ${repairCase.case_id}`,
+    issueLine(issue),
   ].join("\n");
 }
 
-export function blockedMessage(repairCase, diagnosis, blocker) {
+export function blockedMessage(repairCase, diagnosis, blocker, issue) {
   return [
     "WATCHTOWER: BLOCKED - NOT FIXED",
     `${repairCase.product} | ${repairCase.title}`,
@@ -284,10 +413,11 @@ export function blockedMessage(repairCase, diagnosis, blocker) {
     `Blocker: ${compact(blocker || diagnosis?.blocker || "The repair could not be proven safely")}`,
     diagnosis?.proof_gaps?.length ? `Missing proof:\n${listLines(diagnosis.proof_gaps)}` : "Missing proof: none declared",
     `Case: ${repairCase.case_id}`,
+    issueLine(issue),
   ].join("\n");
 }
 
-export function patchReadyMessage(repairCase, diagnosis, repair, release) {
+export function patchReadyMessage(repairCase, diagnosis, repair, release, issue) {
   const tests = release.tests.map((test) => `- ${test.command}: ${test.result}`).join("\n");
   return [
     "WATCHTOWER: TESTED PATCH READY",
@@ -301,6 +431,7 @@ export function patchReadyMessage(repairCase, diagnosis, repair, release) {
     `Branch: ${release.branch}`,
     "Release: not shipped yet; historical red evidence remains intact",
     `Case: ${repairCase.case_id}`,
+    issueLine(issue),
   ].join("\n");
 }
 
@@ -456,13 +587,14 @@ async function removeWorktree(env, repo, workspaceState) {
   });
 }
 
-async function progress(env, repairCase, workerId, leaseToken, phase, summary, data = {}) {
+async function progress(env, repairCase, workerId, leaseToken, phase, summary, data = {}, githubIssue) {
   return apiRequest(env, `/telemetry/repair-worker/${encodeURIComponent(repairCase.case_id)}/progress`, {
     worker_id: workerId,
     lease_token: leaseToken,
     phase,
     summary,
     data,
+    ...(githubIssue ? { github_issue: githubIssue } : {}),
   });
 }
 
@@ -507,6 +639,30 @@ export async function runWorker(env = process.env) {
       });
     }, 120_000);
 
+    const runRoot = env.WATCHTOWER_REPAIR_RUN_ROOT || DEFAULT_RUN_ROOT;
+    const runDir = join(runRoot, repairCase.case_id);
+    mkdirSync(runDir, { recursive: true });
+    let issue;
+    try {
+      issue = await ensureGitHubIssue(env, repairCase, runDir);
+      await progress(
+        env,
+        repairCase,
+        workerId,
+        leaseToken,
+        "INVESTIGATING",
+        `Private GitHub issue #${issue.number} created; tracing exact receipts and code path.`,
+        {},
+        issue,
+      );
+      await sendWhatsApp(env, detectedMessage(repairCase, issue));
+    } catch (error) {
+      const diagnosis = fallbackDiagnosis(`Private GitHub issue setup failed: ${compact(error?.message || error, 1_000)}`);
+      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", diagnosis.blocker, diagnosis);
+      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, diagnosis.blocker));
+      return { status: "needs_human", case_id: repairCase.case_id };
+    }
+
     try {
       const repos = repoPaths(env);
       const mirrors = new Map([
@@ -519,21 +675,19 @@ export async function runWorker(env = process.env) {
       }
     } catch (error) {
       const diagnosis = fallbackDiagnosis(`Repository mirror refresh failed: ${compact(error?.message || error, 500)}`);
-      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", diagnosis.blocker, diagnosis);
-      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, diagnosis.blocker));
+      const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "repository-blocked", diagnosisIssueComment(diagnosis, false));
+      const report = { ...diagnosis, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
+      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", diagnosis.blocker, report);
+      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, diagnosis.blocker, issue));
       return { status: "needs_human", case_id: repairCase.case_id };
     }
 
-    const runRoot = env.WATCHTOWER_REPAIR_RUN_ROOT || DEFAULT_RUN_ROOT;
-    const runDir = join(runRoot, repairCase.case_id);
-    mkdirSync(runDir, { recursive: true });
     const diagnosisSchemaPath = join(runDir, "diagnosis.schema.json");
     const diagnosisPath = join(runDir, "diagnosis.json");
     const diagnosisPromptPath = join(runDir, "diagnosis.txt");
     writeFileSync(diagnosisSchemaPath, JSON.stringify(diagnosisSchema(), null, 2));
     writeFileSync(diagnosisPromptPath, diagnosisPrompt(repairCase, env));
 
-    await sendWhatsApp(env, detectedMessage(repairCase));
     const repos = repoPaths(env);
     const productRepo = repos.products[repairCase.product];
     const diagnosisCwd = productRepo && existsSync(productRepo) ? productRepo : repos.backend;
@@ -564,17 +718,30 @@ export async function runWorker(env = process.env) {
 
     if (!repairable) {
       const blocker = diagnosis.blocker || "The evidence did not satisfy the high-confidence autofix gate.";
-      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", blocker, diagnosis);
-      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker));
+      const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "diagnosis-blocked", diagnosisIssueComment(diagnosis, false));
+      const report = { ...diagnosis, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
+      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", blocker, report);
+      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker, issue));
       return { status: "needs_human", case_id: repairCase.case_id };
     }
 
-    await sendWhatsApp(env, rootCauseMessage(repairCase, diagnosis));
+    const diagnosisIssueError = await tryCommentOnGitHubIssue(env, issue, runDir, "root-cause", diagnosisIssueComment(diagnosis, true));
+    if (diagnosisIssueError) {
+      const blocker = `The root cause was proven, but the private GitHub issue could not be updated: ${diagnosisIssueError}`;
+      const report = { diagnosis, github_issue: issue, issue_update_error: diagnosisIssueError };
+      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", blocker, report);
+      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker, issue));
+      return { status: "needs_human", case_id: repairCase.case_id };
+    }
+
+    await sendWhatsApp(env, rootCauseMessage(repairCase, diagnosis, issue));
 
     const repo = repairRepository(repairCase, diagnosis, env);
     if (repo.blocker) {
-      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", repo.blocker, diagnosis);
-      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, repo.blocker));
+      const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "repair-owner-blocked", `## Repair blocked\n\n${repo.blocker}`);
+      const report = { diagnosis, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
+      await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", repo.blocker, report);
+      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, repo.blocker, issue));
       return { status: "needs_human", case_id: repairCase.case_id };
     }
 
@@ -583,7 +750,7 @@ export async function runWorker(env = process.env) {
       await progress(env, repairCase, workerId, leaseToken, "REPAIRING", `Root cause proven: ${compact(diagnosis.root_cause, 1_500)}`, {
         repair_target: diagnosis.repair_target,
         affected_paths: diagnosis.affected_paths,
-      });
+      }, issue);
       workspaceState = await prepareWorktree(env, repo, runDir, repairCase);
       const repairSchemaPath = join(runDir, "repair.schema.json");
       const repairPath = join(runDir, "repair.json");
@@ -614,35 +781,39 @@ export async function runWorker(env = process.env) {
       const files = await changedFiles(workspaceState.git, workspaceState.workspace, env);
       if (repairResult.code !== 0 || repair.status !== "fixed" || files.length === 0) {
         const blocker = repair.blocker || "The repair pass did not produce a concrete code change.";
-        const report = { diagnosis, repair: { ...repair, changed_files: files } };
+        const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "repair-blocked", `## Repair pass blocked\n\n${blocker}`);
+        const report = { diagnosis, repair: { ...repair, changed_files: files }, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
         await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", blocker, report);
-        await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker));
+        await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker, issue));
         return { status: "needs_human", case_id: repairCase.case_id };
       }
 
-      await progress(env, repairCase, workerId, leaseToken, "TESTING", `Validating ${files.length} changed file(s).`, { changed_files: files });
+      await progress(env, repairCase, workerId, leaseToken, "TESTING", `Validating ${files.length} changed file(s).`, { changed_files: files }, issue);
       const tests = await validateWorkspace(repo, workspaceState.workspace, env);
       const failedTest = tests.find((test) => test.result === "failed");
       if (failedTest) {
         const blocker = `Required validation failed: ${failedTest.command}. ${failedTest.output}`;
-        const report = { diagnosis, repair: { ...repair, changed_files: files }, release: { tests } };
+        const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "validation-blocked", `## Validation failed\n\n${blocker}`);
+        const report = { diagnosis, repair: { ...repair, changed_files: files }, release: { tests }, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
         await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", blocker, report);
-        await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker));
+        await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker, issue));
         return { status: "needs_human", case_id: repairCase.case_id };
       }
 
       const pushed = await commitAndPush(env, workspaceState, repairCase);
       const release = { ...pushed, changed_files: files, tests };
-      const report = { diagnosis, repair: { ...repair, changed_files: files }, release };
+      const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "patch-ready", patchIssueComment(diagnosis, repair, release));
+      const report = { diagnosis, repair: { ...repair, changed_files: files }, release, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
       const summary = `${compact(repair.solution, 1_200)} Tested patch ${pushed.commit.slice(0, 12)} on ${pushed.branch}.`;
       await complete(env, repairCase, workerId, leaseToken, "PATCH_READY", summary, report);
-      await sendWhatsApp(env, patchReadyMessage(repairCase, diagnosis, repair, release));
+      await sendWhatsApp(env, patchReadyMessage(repairCase, diagnosis, repair, release, issue));
       return { status: "patch_ready", case_id: repairCase.case_id, commit: pushed.commit, branch: pushed.branch };
     } catch (error) {
       const blocker = `Repair execution failed: ${compact(error?.message || error, 1_500)}`;
-      const report = { diagnosis, execution_error: blocker };
+      const issueUpdateError = await tryCommentOnGitHubIssue(env, issue, runDir, "execution-blocked", `## Repair execution failed\n\n${blocker}`);
+      const report = { diagnosis, execution_error: blocker, github_issue: issue, ...(issueUpdateError ? { issue_update_error: issueUpdateError } : {}) };
       await complete(env, repairCase, workerId, leaseToken, "NEEDS_HUMAN", blocker, report).catch(() => undefined);
-      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker));
+      await sendWhatsApp(env, blockedMessage(repairCase, diagnosis, blocker, issue));
       return { status: "needs_human", case_id: repairCase.case_id };
     } finally {
       await removeWorktree(env, repo, workspaceState);

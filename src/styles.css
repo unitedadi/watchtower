@@ -339,6 +339,14 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
   font-weight: 700;
   text-transform: uppercase;
 }
+.repair-report-link {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.repair-report-link:hover { color: var(--ink); }
 .repair-report-blocker {
   border-left: 2px solid var(--red);
   padding-left: 10px;

@@ -21,12 +21,32 @@ function git(cwd, args) {
   return execFileSync("/usr/bin/git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
+function installFakeGh(root) {
+  const binary = join(root, "fake-gh.mjs");
+  const log = join(root, "github.log");
+  writeFileSync(
+    binary,
+    `#!/usr/bin/env node
+import { appendFileSync } from "node:fs";
+const args = process.argv.slice(2);
+appendFileSync(process.env.FAKE_GITHUB_LOG, args.join(" ") + "\\n");
+if (args[0] === "repo" && args[1] === "view") process.stdout.write("PRIVATE\\n");
+else if (args[0] === "issue" && args[1] === "create") process.stdout.write("https://github.com/unitedadi/DarDocCodexControlPlane/issues/77\\n");
+else if (args[0] === "issue" && args[1] === "comment") process.stdout.write("https://github.com/unitedadi/DarDocCodexControlPlane/issues/77#issuecomment-1\\n");
+else process.exitCode = 1;
+`,
+  );
+  chmodSync(binary, 0o755);
+  return { binary, log };
+}
+
 test("worker blocks instead of presenting an incomplete diagnosis as a fix", async () => {
   const root = mkdtempSync(join(tmpdir(), "watchtower-repair-"));
   const codexLog = join(root, "codex-args.json");
   const whatsappLog = join(root, "whatsapp.log");
   const fakeCodex = join(root, "fake-codex.mjs");
   const fakeWacli = join(root, "fake-wacli.mjs");
+  const fakeGh = installFakeGh(root);
   writeFileSync(
     fakeCodex,
     `#!/usr/bin/env node
@@ -90,6 +110,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       WATCHTOWER_REPAIR_CODEX_MODEL: "gpt-5.5",
       WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT: "xhigh",
       WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
+      WATCHTOWER_REPAIR_GH_BIN: fakeGh.binary,
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "state", "worker.lock"),
       WATCHTOWER_REPAIR_BACKEND_REPO: root,
@@ -97,6 +118,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       WATCHTOWER_REPAIR_SKIP_SYNC: "true",
       FAKE_CODEX_LOG: codexLog,
       FAKE_WHATSAPP_LOG: whatsappLog,
+      FAKE_GITHUB_LOG: fakeGh.log,
     });
     assert.equal(result.code, 0, result.stderr);
     assert.equal(completion.outcome, "NEEDS_HUMAN");
@@ -112,6 +134,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
     assert.match(whatsapp, /send text --to \+971500000000/);
     assert.match(whatsapp, /WATCHTOWER: NOT GREEN/);
     assert.match(whatsapp, /WATCHTOWER: BLOCKED - NOT FIXED/);
+    assert.match(whatsapp, /DarDocCodexControlPlane\/issues\/77/);
     assert.doesNotMatch(whatsapp, /ROOT CAUSE PROVEN/);
     assert.doesNotMatch(whatsapp, /diagnosis ready/);
   } finally {
@@ -149,6 +172,7 @@ test("high-confidence evidence produces a tested patch branch", async () => {
   const fakeWacli = join(root, "fake-wacli.mjs");
   const codexCount = join(root, "codex-count.txt");
   const whatsappLog = join(root, "whatsapp.log");
+  const fakeGh = installFakeGh(root);
 
   mkdirSync(remote);
   git(root, ["init", "--bare", remote]);
@@ -238,6 +262,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       WATCHTOWER_REPAIR_WHATSAPP_TARGET: "+971500000000",
       WATCHTOWER_REPAIR_CODEX_BIN: fakeCodex,
       WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
+      WATCHTOWER_REPAIR_GH_BIN: fakeGh.binary,
       WATCHTOWER_REPAIR_BACKEND_REPO: mirror,
       WATCHTOWER_REPAIR_WATCHTOWER_REPO: mirror,
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
@@ -245,6 +270,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       WATCHTOWER_REPAIR_SKIP_SYNC: "true",
       FAKE_CODEX_COUNT: codexCount,
       FAKE_WHATSAPP_LOG: whatsappLog,
+      FAKE_GITHUB_LOG: fakeGh.log,
     });
 
     assert.equal(result.code, 0, result.stderr);
@@ -252,7 +278,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
     assert.equal(completion.report.diagnosis.confidence, "high");
     assert.deepEqual(completion.report.release.changed_files, ["bug.js"]);
     assert.equal(completion.report.release.tests[0].result, "passed");
-    assert.deepEqual(progressEvents, ["REPAIRING", "TESTING"]);
+    assert.deepEqual(progressEvents, ["INVESTIGATING", "REPAIRING", "TESTING"]);
     assert.match(git(root, ["--git-dir", remote, "branch", "--list", "watchtower/wt-20370412-patchme"]), /watchtower\/wt-20370412-patchme/);
 
     const whatsapp = readFileSync(whatsappLog, "utf8");
@@ -260,7 +286,12 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
     assert.match(whatsapp, /WATCHTOWER: TESTED PATCH READY/);
     assert.match(whatsapp, /Changed: bug.js/);
     assert.match(whatsapp, /npm run build:backend: passed/);
+    assert.match(whatsapp, /DarDocCodexControlPlane\/issues\/77/);
     assert.doesNotMatch(whatsapp, /suggested next step/i);
+    const github = readFileSync(fakeGh.log, "utf8");
+    assert.match(github, /issue create --repo unitedadi\/DarDocCodexControlPlane/);
+    assert.match(github, /issue comment 77 .*root-cause\.md/);
+    assert.match(github, /issue comment 77 .*patch-ready\.md/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

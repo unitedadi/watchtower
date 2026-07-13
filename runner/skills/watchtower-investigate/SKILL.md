@@ -5,6 +5,8 @@ description: Investigate one evidence-backed Watchtower case in strict read-only
 
 # Watchtower Investigation
 
+Your structured diagnosis will be written to the case's private GitHub issue. Every conclusion must therefore be specific enough for another engineer to reproduce from the attached receipts.
+
 Use the evidence snapshot in the prompt as the source of truth for this case. Do not call the repair-control API; the worker already owns the case and supplied its evidence.
 
 1. Inspect the exact local repositories and paths named in the prompt.

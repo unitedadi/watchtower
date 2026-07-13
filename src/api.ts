@@ -260,6 +260,9 @@ export interface RepairCase {
   phase: "QUEUED" | "INVESTIGATING" | "REPAIRING" | "TESTING" | "PATCH_READY" | "DEPLOYING" | "VERIFYING" | "DONE" | "BLOCKED";
   latest_summary: string | null;
   latest_report: Record<string, unknown> | null;
+  github_issue_url: string | null;
+  github_issue_repository: string | null;
+  github_issue_number: number | null;
   updated_at: string;
 }
 

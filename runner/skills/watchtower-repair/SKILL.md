@@ -5,6 +5,8 @@ description: Apply one evidence-backed Watchtower repair inside an isolated writ
 
 # Watchtower Repair
 
+The private GitHub issue linked in the case is the durable incident record. Keep the repair scoped to the proven issue, preserve the original evidence, and never treat a patch as recovery.
+
 The diagnosis in the prompt is the repair boundary. Implement the smallest change that directly fixes that root cause.
 
 1. Read the exact affected paths and surrounding tests before editing.

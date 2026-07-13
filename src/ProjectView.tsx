@@ -609,6 +609,14 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
     <details className="repair-report">
       <summary>view repair report</summary>
       <div className="repair-report-body">
+        {repairCase.github_issue_url && (
+          <section>
+            <div className="repair-report-label">GitHub issue</div>
+            <a className="repair-report-link mono" href={repairCase.github_issue_url} target="_blank" rel="noreferrer">
+              {repairCase.github_issue_repository}#{repairCase.github_issue_number}
+            </a>
+          </section>
+        )}
         {typeof diagnosis?.customer_impact === "string" && (
           <section>
             <div className="repair-report-label">Customer impact</div>
