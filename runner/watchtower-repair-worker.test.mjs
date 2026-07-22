@@ -6,8 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-import { sendWhatsApp } from "./watchtower-repair-worker.mjs";
-
 function run(command, args, env) {
   return new Promise((resolve) => {
     const child = spawn(command, args, { env, stdio: ["ignore", "ignore", "pipe"] });
@@ -43,9 +41,7 @@ else process.exitCode = 1;
 test("worker blocks instead of presenting an incomplete diagnosis as a fix", async () => {
   const root = mkdtempSync(join(tmpdir(), "watchtower-repair-"));
   const codexLog = join(root, "codex-args.json");
-  const whatsappLog = join(root, "whatsapp.log");
   const fakeCodex = join(root, "fake-codex.mjs");
-  const fakeWacli = join(root, "fake-wacli.mjs");
   const fakeGh = installFakeGh(root);
   writeFileSync(
     fakeCodex,
@@ -57,16 +53,7 @@ const output = args[args.indexOf("--output-last-message") + 1];
 writeFileSync(output, JSON.stringify({ customer_impact: "The exact customer impact is not present in the receipt.", root_cause: "The classifier lacks the original error metadata.", decisive_evidence: [], confidence: "medium", category: "telemetry_gap", repair_target: "backend", affected_paths: ["src/services/telemetryClassifier.ts"], repair_plan: ["Attach the missing error metadata."], verification_plan: ["Replay the receipt."], proof_gaps: ["Original error metadata is missing."], autofix: "blocked", blocker: "The worker cannot prove which classifier rule is correct." }));
 `,
   );
-  writeFileSync(
-    fakeWacli,
-    `#!/usr/bin/env node
-import { appendFileSync } from "node:fs";
-appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + "\\n");
-process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
-`,
-  );
   chmodSync(fakeCodex, 0o755);
-  chmodSync(fakeWacli, 0o755);
 
   let claimed = false;
   let completion = null;
@@ -105,11 +92,9 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       ...process.env,
       WATCHTOWER_REPAIR_API_BASE: `http://127.0.0.1:${address.port}`,
       WATCHTOWER_REPAIR_RUNNER_TOKEN: "runner-test-token",
-      WATCHTOWER_REPAIR_WHATSAPP_TARGET: "+971500000000",
       WATCHTOWER_REPAIR_CODEX_BIN: fakeCodex,
       WATCHTOWER_REPAIR_CODEX_MODEL: "gpt-5.5",
       WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT: "xhigh",
-      WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
       WATCHTOWER_REPAIR_GH_BIN: fakeGh.binary,
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "state", "worker.lock"),
@@ -117,7 +102,6 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       WATCHTOWER_REPAIR_WATCHTOWER_REPO: root,
       WATCHTOWER_REPAIR_SKIP_SYNC: "true",
       FAKE_CODEX_LOG: codexLog,
-      FAKE_WHATSAPP_LOG: whatsappLog,
       FAKE_GITHUB_LOG: fakeGh.log,
     });
     assert.equal(result.code, 0, result.stderr);
@@ -130,37 +114,12 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
     assert.equal(codexArgs.includes("--dangerously-bypass-approvals-and-sandbox"), false);
     assert.equal(codexArgs.includes("gpt-5.5"), true);
     assert.equal(codexArgs.includes('model_reasoning_effort="xhigh"'), true);
-    const whatsapp = readFileSync(whatsappLog, "utf8");
-    assert.match(whatsapp, /send text --to \+971500000000/);
-    assert.match(whatsapp, /WATCHTOWER: NOT GREEN/);
-    assert.match(whatsapp, /WATCHTOWER: BLOCKED - NOT FIXED/);
-    assert.match(whatsapp, /DarDocCodexControlPlane\/issues\/77/);
-    assert.doesNotMatch(whatsapp, /ROOT CAUSE PROVEN/);
-    assert.doesNotMatch(whatsapp, /diagnosis ready/);
+    const github = readFileSync(fakeGh.log, "utf8");
+    assert.match(github, /issue create --repo unitedadi\/DarDocCodexControlPlane/);
+    assert.match(github, /issue comment 77 .*diagnosis-blocked\.md/);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
-});
-
-test("WhatsApp delivery failure is surfaced", async () => {
-  const root = mkdtempSync(join(tmpdir(), "watchtower-whatsapp-failure-"));
-  const fakeWacli = join(root, "fake-wacli.mjs");
-  writeFileSync(
-    fakeWacli,
-    `#!/usr/bin/env node
-process.stdout.write(JSON.stringify({ success: false, error: "not_connected" }));
-`,
-  );
-  chmodSync(fakeWacli, 0o755);
-
-  await assert.rejects(
-    sendWhatsApp({
-      ...process.env,
-      WATCHTOWER_REPAIR_WHATSAPP_TARGET: "+971500000000",
-      WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
-    }, "Watchtower test"),
-    /WhatsApp send failed: not_connected/,
-  );
 });
 
 test("high-confidence evidence produces a tested patch branch", async () => {
@@ -169,9 +128,7 @@ test("high-confidence evidence produces a tested patch branch", async () => {
   const seed = join(root, "seed");
   const mirror = join(root, "mirror");
   const fakeCodex = join(root, "fake-codex.mjs");
-  const fakeWacli = join(root, "fake-wacli.mjs");
   const codexCount = join(root, "codex-count.txt");
-  const whatsappLog = join(root, "whatsapp.log");
   const fakeGh = installFakeGh(root);
 
   mkdirSync(remote);
@@ -206,16 +163,7 @@ if (count === 1) {
 }
 `,
   );
-  writeFileSync(
-    fakeWacli,
-    `#!/usr/bin/env node
-import { appendFileSync } from "node:fs";
-appendFileSync(process.env.FAKE_WHATSAPP_LOG, process.argv.slice(2).join(" ") + "\\n");
-process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
-`,
-  );
   chmodSync(fakeCodex, 0o755);
-  chmodSync(fakeWacli, 0o755);
 
   let claimed = false;
   let completion = null;
@@ -259,9 +207,7 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       ...process.env,
       WATCHTOWER_REPAIR_API_BASE: `http://127.0.0.1:${address.port}`,
       WATCHTOWER_REPAIR_RUNNER_TOKEN: "runner-test-token",
-      WATCHTOWER_REPAIR_WHATSAPP_TARGET: "+971500000000",
       WATCHTOWER_REPAIR_CODEX_BIN: fakeCodex,
-      WATCHTOWER_REPAIR_WACLI_BIN: fakeWacli,
       WATCHTOWER_REPAIR_GH_BIN: fakeGh.binary,
       WATCHTOWER_REPAIR_BACKEND_REPO: mirror,
       WATCHTOWER_REPAIR_WATCHTOWER_REPO: mirror,
@@ -269,7 +215,6 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "state", "worker.lock"),
       WATCHTOWER_REPAIR_SKIP_SYNC: "true",
       FAKE_CODEX_COUNT: codexCount,
-      FAKE_WHATSAPP_LOG: whatsappLog,
       FAKE_GITHUB_LOG: fakeGh.log,
     });
 
@@ -281,13 +226,6 @@ process.stdout.write(JSON.stringify({ success: true, data: { sent: true } }));
     assert.deepEqual(progressEvents, ["INVESTIGATING", "REPAIRING", "TESTING"]);
     assert.match(git(root, ["--git-dir", remote, "branch", "--list", "watchtower/wt-20370412-patchme"]), /watchtower\/wt-20370412-patchme/);
 
-    const whatsapp = readFileSync(whatsappLog, "utf8");
-    assert.match(whatsapp, /WATCHTOWER: ROOT CAUSE PROVEN \(HIGH\)/);
-    assert.match(whatsapp, /WATCHTOWER: TESTED PATCH READY/);
-    assert.match(whatsapp, /Changed: bug.js/);
-    assert.match(whatsapp, /npm run build:backend: passed/);
-    assert.match(whatsapp, /DarDocCodexControlPlane\/issues\/77/);
-    assert.doesNotMatch(whatsapp, /suggested next step/i);
     const github = readFileSync(fakeGh.log, "utf8");
     assert.match(github, /issue create --repo unitedadi\/DarDocCodexControlPlane/);
     assert.match(github, /issue comment 77 .*root-cause\.md/);

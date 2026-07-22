@@ -6,7 +6,6 @@ import {
   fetchJourneyEvents,
   fetchJourneys,
   fetchPromises,
-  fetchRepairCase,
   fetchRepairCases,
   fetchSummary,
   windowDays,
@@ -518,7 +517,8 @@ function CopyCaseButton({ prompt }: { prompt: string }) {
   return (
     <span className="casecopy">
       <button
-        className="casebtn casebtn-secondary"
+        className="casebtn"
+        title="Copy this evidence-backed case for Codex"
         onClick={async (e) => {
           e.stopPropagation();
           const copied = await copyTextToClipboard(prompt);
@@ -530,7 +530,7 @@ function CopyCaseButton({ prompt }: { prompt: string }) {
           window.setTimeout(() => setState("idle"), 1400);
         }}
       >
-        {state === "copied" ? "copied" : state === "ready" ? "case ready" : "copy case"}
+        {state === "copied" ? "case copied" : state === "ready" ? "case ready" : "fix this case"}
       </button>
       {state === "ready" && (
         <textarea
@@ -558,15 +558,6 @@ const REPAIR_STATE_LABEL: Record<RepairCase["state"], string> = {
   NEEDS_HUMAN: "blocked — not fixed",
   STOPPED: "stopped",
   RECOVERED: "recovered",
-};
-
-const REPAIR_PHASE_LABEL: Partial<Record<RepairCase["phase"], string>> = {
-  INVESTIGATING: "tracing evidence",
-  REPAIRING: "repairing",
-  TESTING: "testing repair",
-  PATCH_READY: "tested patch ready",
-  DEPLOYING: "deploying",
-  VERIFYING: "verifying recovery",
 };
 
 type ReportValue = Record<string, unknown>;
@@ -607,7 +598,7 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
 
   return (
     <details className="repair-report">
-      <summary>view repair report</summary>
+      <summary>previous repair report</summary>
       <div className="repair-report-body">
         {repairCase.github_issue_url && (
           <section>
@@ -685,44 +676,21 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
   );
 }
 
-function RepairActions({ repairCase, automatic, prompt }: { repairCase?: RepairCase; automatic: boolean; prompt: string }) {
-  const [current, setCurrent] = useState<RepairCase | null>(repairCase ?? null);
-  const active = current?.state === "QUEUED" || current?.state === "CLAIMED";
-
-  useEffect(() => {
-    setCurrent(repairCase ?? null);
-  }, [repairCase?.case_id, repairCase?.state, repairCase?.updated_at]);
-
-  useEffect(() => {
-    if (!current || !active) return;
-    let alive = true;
-    const refresh = () => {
-      fetchRepairCase(current.case_id)
-        .then((result) => {
-          if (alive) setCurrent(result.repair_case);
-        })
-        .catch(() => undefined);
-    };
-    const timer = window.setInterval(refresh, 4_000);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-    };
-  }, [current?.case_id, active]);
-
+function RepairActions({ repairCase, prompt }: { repairCase?: RepairCase; prompt: string }) {
+  const historical = repairCase && repairCase.state !== "QUEUED" && repairCase.state !== "CLAIMED";
   return (
     <div className="repair-actions">
-      {automatic && (
+      <CopyCaseButton prompt={prompt} />
+      {historical && (
         <span
-          className={`repair-status ${current ? `repair-${current.state.toLowerCase()}` : "repair-pending"}`}
-          title={current ? `${current.case_id} · risk ${current.risk_tier}${current.latest_summary ? ` · ${current.latest_summary}` : ""}` : "Watchtower will create this case automatically"}
+          className={`repair-status repair-${repairCase.state.toLowerCase()}`}
+          title={`${repairCase.case_id} · risk ${repairCase.risk_tier}${repairCase.latest_summary ? ` · ${repairCase.latest_summary}` : ""}`}
         >
-          {current ? (current.state === "CLAIMED" ? REPAIR_PHASE_LABEL[current.phase] ?? REPAIR_STATE_LABEL[current.state] : REPAIR_STATE_LABEL[current.state]) : "auto-queue pending"}
+          {REPAIR_STATE_LABEL[repairCase.state]}
         </span>
       )}
-      <CopyCaseButton prompt={prompt} />
-      {current && <RepairReport repairCase={current} />}
-      {current && <span className="repair-id mono">{current.case_id}</span>}
+      {historical && <RepairReport repairCase={repairCase} />}
+      {historical && <span className="repair-id mono">{repairCase.case_id}</span>}
     </div>
   );
 }
@@ -763,11 +731,7 @@ function PromiseEvidenceRow({
   return (
     <div className="promise case-promise">
       <div className="promise-actions">
-        <RepairActions
-          repairCase={repairCase}
-          automatic={promise.status !== "held"}
-          prompt={casePrompt}
-        />
+        {promise.status !== "held" && <RepairActions repairCase={repairCase} prompt={casePrompt} />}
         <Chip cls={PROMISE_STATUS_CLS[promise.status]}>{promise.status}</Chip>
       </div>
       <div className="promise-main">
@@ -818,7 +782,6 @@ function ReasonEvidenceRow({
       <div className="reason-actionbar">
         <RepairActions
           repairCase={repairCase}
-          automatic={range !== "all"}
           prompt={casePrompt}
         />
         <span className={`reason-count ${reason.cls}`}>

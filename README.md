@@ -12,6 +12,15 @@ for the organization.
   today" ranked by count, the journey table (filter by status), and a
   click-through timeline drawer showing every event in a journey.
 
+## Fixing a problem
+
+Watchtower is the repair inbox. Open a non-green promise or failure, inspect
+its receipts, then use **fix this case** to copy the complete evidence packet
+into Codex. The dashboard keeps any previous repair report as history.
+
+There is no WhatsApp notifier or always-on repair worker. A problem is not
+treated as handled until someone opens it in Watchtower and verifies the fix.
+
 ## Running
 
 ```
