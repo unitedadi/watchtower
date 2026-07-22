@@ -238,6 +238,7 @@ export function fetchFindings(range: Range, date: string, product = "checkout-we
 
 export type RepairCaseState =
   | "QUEUED"
+  | "ISSUE_OPEN"
   | "CLAIMED"
   | "INVESTIGATED"
   | "PATCH_READY"

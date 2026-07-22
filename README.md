@@ -14,12 +14,15 @@ for the organization.
 
 ## Fixing a problem
 
-Watchtower is the repair inbox. Open a non-green promise or failure, inspect
-its receipts, then use **fix this case** to copy the complete evidence packet
-into Codex. The dashboard keeps any previous repair report as history.
+Watchtower is the evidence source. Every distinct non-green promise or hard
+failure is linked to one durable issue in the private GitHub repository that
+owns the customer surface. Repeated observations update that issue instead of
+creating duplicates. Use **open GitHub issue** to investigate and fix it;
+**copy case** remains available as a fallback.
 
-There is no WhatsApp notifier or always-on repair worker. A problem is not
-treated as handled until someone opens it in Watchtower and verifies the fix.
+There is no WhatsApp notifier or always-on repair worker. A merge or deploy
+does not close the issue. Watchtower closes it only after independent clean
+evidence satisfies the recovery contract.
 
 ## Running
 

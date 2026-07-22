@@ -512,12 +512,12 @@ async function copyTextToClipboard(text: string): Promise<boolean> {
   return copied;
 }
 
-function CopyCaseButton({ prompt }: { prompt: string }) {
+function CopyCaseButton({ prompt, secondary = false }: { prompt: string; secondary?: boolean }) {
   const [state, setState] = useState<"idle" | "copied" | "ready">("idle");
   return (
     <span className="casecopy">
       <button
-        className="casebtn"
+        className={`casebtn${secondary ? " casebtn-secondary" : ""}`}
         title="Copy this evidence-backed case for Codex"
         onClick={async (e) => {
           e.stopPropagation();
@@ -530,7 +530,7 @@ function CopyCaseButton({ prompt }: { prompt: string }) {
           window.setTimeout(() => setState("idle"), 1400);
         }}
       >
-        {state === "copied" ? "case copied" : state === "ready" ? "case ready" : "fix this case"}
+        {state === "copied" ? "case copied" : state === "ready" ? "case ready" : secondary ? "copy case" : "fix this case"}
       </button>
       {state === "ready" && (
         <textarea
@@ -551,6 +551,7 @@ function CopyCaseButton({ prompt }: { prompt: string }) {
 
 const REPAIR_STATE_LABEL: Record<RepairCase["state"], string> = {
   QUEUED: "queued",
+  ISSUE_OPEN: "issue open",
   CLAIMED: "in progress",
   INVESTIGATED: "diagnosis only",
   PATCH_READY: "tested patch ready",
@@ -598,7 +599,7 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
 
   return (
     <details className="repair-report">
-      <summary>previous repair report</summary>
+      <summary>case history</summary>
       <div className="repair-report-body">
         {repairCase.github_issue_url && (
           <section>
@@ -678,9 +679,25 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
 
 function RepairActions({ repairCase, prompt }: { repairCase?: RepairCase; prompt: string }) {
   const historical = repairCase && repairCase.state !== "QUEUED" && repairCase.state !== "CLAIMED";
+  const issueUrl = repairCase?.github_issue_url;
   return (
     <div className="repair-actions">
-      <CopyCaseButton prompt={prompt} />
+      {issueUrl ? (
+        <>
+          <a
+            className="casebtn"
+            href={issueUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+          >
+            open GitHub issue
+          </a>
+          <CopyCaseButton prompt={prompt} secondary />
+        </>
+      ) : (
+        <CopyCaseButton prompt={prompt} />
+      )}
       {historical && (
         <span
           className={`repair-status repair-${repairCase.state.toLowerCase()}`}

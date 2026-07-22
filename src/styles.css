@@ -224,6 +224,9 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
   min-width: 0;
 }
 .casebtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(122, 167, 247, 0.72);
   background: var(--accent);
   color: #08111f;
@@ -233,12 +236,21 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
+  text-align: center;
+  text-decoration: none;
   white-space: nowrap;
   transition: border-color 0.2s var(--ease), background 0.2s var(--ease);
 }
 .casebtn:hover { border-color: rgba(122, 167, 247, 0.95); background: #9abcf8; }
 .casebtn:active { transform: scale(0.97); }
 .casebtn:disabled { cursor: default; transform: none; opacity: 0.86; }
+.casebtn-secondary {
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+.casebtn-secondary:hover { border-color: var(--line-strong); background: var(--hover); color: var(--ink); }
 .repair-actions { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; }
 .repair-actions .casecopy { width: 100%; }
 .repair-actions .casebtn { width: 100%; }
@@ -267,6 +279,11 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
   overflow-wrap: anywhere;
 }
 .repair-patch_ready {
+  border-color: rgba(122, 167, 247, 0.55);
+  background: var(--info-bg);
+  color: var(--info);
+}
+.repair-issue_open {
   border-color: rgba(122, 167, 247, 0.55);
   background: var(--info-bg);
   color: var(--info);
