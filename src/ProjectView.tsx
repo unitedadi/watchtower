@@ -718,10 +718,15 @@ function matchingRepairCase(
   subjectId: string,
   date: string,
 ) {
+  const separator = subjectId.indexOf(":");
+  const reason = separator >= 0 ? subjectId.slice(separator + 1) : subjectId;
+  const normalizedSubjectId = sourceKind === "reason" && separator > 0 && !/^[A-Za-z0-9_/-]{1,120}$/.test(reason)
+    ? `${subjectId.slice(0, separator)}:UNCLASSIFIED`
+    : subjectId;
   return cases.find(
     (repairCase) =>
       repairCase.source_kind === sourceKind &&
-      repairCase.subject_id === subjectId &&
+      repairCase.subject_id === normalizedSubjectId &&
       repairCase.selected_date === date,
   );
 }
