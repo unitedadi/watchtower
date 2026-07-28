@@ -7,6 +7,11 @@
       "validation": [
         {
           "command": "/Users/mini/.local/bin/npm",
+          "args": ["ci"],
+          "timeout_ms": 900000
+        },
+        {
+          "command": "/Users/mini/.local/bin/npm",
           "args": ["run", "build"],
           "timeout_ms": 900000
         }
@@ -20,6 +25,11 @@
       "path": "/Users/mini/codex-runner/repos/realbackend",
       "base_branch": "dev",
       "validation": [
+        {
+          "command": "/Users/mini/.local/bin/npm",
+          "args": ["ci"],
+          "timeout_ms": 1200000
+        },
         {
           "command": "/Users/mini/.local/bin/npm",
           "args": ["run", "build:backend"],
@@ -36,6 +46,11 @@
       "path": "/Users/mini/codex-runner/repos/watchtower",
       "base_branch": "main",
       "validation": [
+        {
+          "command": "/Users/mini/.local/bin/npm",
+          "args": ["ci"],
+          "timeout_ms": 900000
+        },
         {
           "command": "/Users/mini/.local/bin/npm",
           "args": ["run", "build"],
