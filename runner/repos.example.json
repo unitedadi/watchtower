@@ -1,0 +1,60 @@
+{
+  "owners": {
+    "checkout": {
+      "repository": "unitedadi/dardoc-checkout",
+      "path": "/Users/mini/codex-runner/repos/checkout-dardoc",
+      "base_branch": "main",
+      "validation": [
+        {
+          "command": "/Users/mini/.local/bin/npm",
+          "args": ["run", "build"],
+          "timeout_ms": 900000
+        }
+      ],
+      "ship": {
+        "kind": "disabled"
+      }
+    },
+    "backend": {
+      "repository": "ado-dardoc/RealBackend",
+      "path": "/Users/mini/codex-runner/repos/realbackend",
+      "base_branch": "dev",
+      "validation": [
+        {
+          "command": "/Users/mini/.local/bin/npm",
+          "args": ["run", "build:backend"],
+          "timeout_ms": 1200000
+        }
+      ],
+      "ship": {
+        "kind": "disabled",
+        "required_kind": "realbackend_verified_promotion"
+      }
+    },
+    "watchtower": {
+      "repository": "unitedadi/watchtower",
+      "path": "/Users/mini/codex-runner/repos/watchtower",
+      "base_branch": "main",
+      "validation": [
+        {
+          "command": "/Users/mini/.local/bin/npm",
+          "args": ["run", "build"],
+          "timeout_ms": 900000
+        },
+        {
+          "command": "/Users/mini/.local/bin/npm",
+          "args": ["run", "test:runner"],
+          "timeout_ms": 900000
+        }
+      ],
+      "ship": {
+        "kind": "disabled"
+      }
+    }
+  },
+  "observed_repositories": [
+    "unitedadi/dardoc-checkout",
+    "unitedadi/DarDoc-App-2026",
+    "unitedadi/dardoc-ops-portal"
+  ]
+}

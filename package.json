@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview --port 5180",
-    "test:runner": "node --test runner/*.test.mjs"
+    "test:runner": "node --test runner/*.test.mjs",
+    "demo:repair": "node runner/demo-lifecycle.mjs"
   },
   "dependencies": {
     "lottie-web": "^5.13.0",

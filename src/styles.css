@@ -360,6 +360,53 @@ input[type="date"] { font-family: var(--mono); font-size: 12.5px; }
   padding-left: 10px;
 }
 .repair-report-blocker .repair-report-label { color: var(--red); }
+.repair-control-grid {
+  display: grid;
+  grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+  gap: 5px 12px;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.repair-control-grid span { color: var(--faint); }
+.repair-control-grid b { color: var(--ink); overflow-wrap: anywhere; }
+.repair-task-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+}
+.repair-task {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: var(--bg);
+}
+.repair-task > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.repair-task > div span {
+  color: var(--faint);
+  font-size: 9.5px;
+  overflow-wrap: anywhere;
+}
+.repair-task-state {
+  display: inline-flex;
+  margin-top: 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: lowercase;
+}
+.task-patch_ready, .task-ship_approved, .task-shipping { color: var(--amber); }
+.task-shipped, .task-verified { color: var(--green); }
+.task-blocked { color: var(--red); }
 .case-draft {
   position: absolute;
   z-index: 20;

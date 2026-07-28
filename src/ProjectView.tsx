@@ -6,6 +6,7 @@ import {
   fetchJourneyEvents,
   fetchJourneys,
   fetchPromises,
+  fetchRepairCase,
   fetchRepairCases,
   fetchSummary,
   windowDays,
@@ -555,7 +556,7 @@ const REPAIR_STATE_LABEL: Record<RepairCase["state"], string> = {
   CLAIMED: "in progress",
   INVESTIGATED: "diagnosis only",
   PATCH_READY: "tested patch ready",
-  SHIPPED: "fix shipped",
+  SHIPPED: "deployed · verifying",
   NEEDS_HUMAN: "blocked — not fixed",
   STOPPED: "stopped",
   RECOVERED: "recovered",
@@ -572,14 +573,25 @@ function reportStrings(value: unknown): string[] {
 }
 
 function RepairReport({ repairCase }: { repairCase: RepairCase }) {
-  const report = reportObject(repairCase.latest_report);
-  if (!report && !repairCase.latest_summary) return null;
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchRepairCase>> | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetchRepairCase(repairCase.case_id)
+      .then((result) => active && setDetail(result))
+      .catch(() => active && setDetail(null));
+    return () => { active = false; };
+  }, [repairCase.case_id, repairCase.updated_at]);
 
-  const diagnosis = reportObject(report?.diagnosis) ?? report;
+  const current = detail?.repair_case ?? repairCase;
+  const report = reportObject(current.latest_report);
+  if (!report && !current.latest_summary && !current.route) return null;
+
+  const diagnosis = reportObject(current.diagnosis) ?? reportObject(report?.diagnosis) ?? report;
   const repair = reportObject(report?.repair);
   const release = reportObject(report?.release);
-  const evidence = Array.isArray(diagnosis?.decisive_evidence)
-    ? diagnosis.decisive_evidence.map(reportObject).filter((item): item is ReportValue => item !== null)
+  const evidenceSource = diagnosis?.evidence_bindings ?? diagnosis?.decisive_evidence;
+  const evidence = Array.isArray(evidenceSource)
+    ? evidenceSource.map(reportObject).filter((item): item is ReportValue => item !== null)
     : [];
   const tests = Array.isArray(release?.tests)
     ? release.tests.map(reportObject).filter((item): item is ReportValue => item !== null)
@@ -590,7 +602,7 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
     report?.execution_error,
     repair?.blocker,
     diagnosis?.blocker,
-    repairCase.state === "NEEDS_HUMAN" ? repairCase.latest_summary : null,
+    current.state === "NEEDS_HUMAN" ? current.latest_summary : null,
   ].find((value): value is string => typeof value === "string" && value.length > 0);
   const solution = typeof repair?.solution === "string" && repair.solution.length > 0
     ? repair.solution
@@ -601,24 +613,35 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
     <details className="repair-report">
       <summary>case history</summary>
       <div className="repair-report-body">
-        {repairCase.github_issue_url && (
+        {current.github_issue_url && (
           <section>
-            <div className="repair-report-label">GitHub issue</div>
-            <a className="repair-report-link mono" href={repairCase.github_issue_url} target="_blank" rel="noreferrer">
-              {repairCase.github_issue_repository}#{repairCase.github_issue_number}
+            <div className="repair-report-label">Origin issue</div>
+            <a className="repair-report-link mono" href={current.github_issue_url} target="_blank" rel="noreferrer">
+              {current.github_issue_repository}#{current.github_issue_number}
             </a>
           </section>
         )}
+        <section>
+          <div className="repair-report-label">Control state</div>
+          <div className="repair-control-grid">
+            <span>route</span><b>{current.route ?? "diagnosis pending"}</b>
+            <span>confidence</span><b>{current.route_confidence ?? "pending"}</b>
+            <span>prepare</span><b>{current.approval_state ?? "pending"}</b>
+            <span>ship</span><b>{current.ship_state ?? "blocked"}</b>
+            <span>verification</span><b>{current.verification_status ?? "pending"}</b>
+            <span>occurrence</span><b>#{current.recurrence_count ?? 1}</b>
+          </div>
+        </section>
         {typeof diagnosis?.customer_impact === "string" && (
           <section>
             <div className="repair-report-label">Customer impact</div>
             <p>{diagnosis.customer_impact}</p>
           </section>
         )}
-        {typeof diagnosis?.root_cause === "string" && (
+        {typeof (diagnosis?.likely_cause ?? diagnosis?.root_cause) === "string" && (
           <section>
-            <div className="repair-report-label">Root cause</div>
-            <p>{diagnosis.root_cause}</p>
+            <div className="repair-report-label">Likely cause</div>
+            <p>{String(diagnosis?.likely_cause ?? diagnosis?.root_cause)}</p>
           </section>
         )}
         {evidence.length > 0 && (
@@ -627,7 +650,7 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
             <ul>
               {evidence.map((item, index) => (
                 <li key={`${String(item.receipt ?? "receipt")}-${index}`}>
-                  {String(item.fact ?? "Evidence attached")}
+                  <b>{String(item.source ?? "receipt")}</b>: {String(item.fact ?? "Evidence attached")}
                   {item.receipt ? <span className="mono"> {String(item.receipt)}</span> : null}
                 </li>
               ))}
@@ -640,7 +663,28 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
             <p>{solution}</p>
           </section>
         )}
-        {blocker && repairCase.state === "NEEDS_HUMAN" && (
+        {detail?.repair_tasks && detail.repair_tasks.length > 0 && (
+          <section>
+            <div className="repair-report-label">Repository tasks</div>
+            <div className="repair-task-list">
+              {detail.repair_tasks.map((task) => (
+                <div className="repair-task" key={task.task_id}>
+                  <div>
+                    <b>{task.owner}</b>
+                    <span className="mono">{task.repository}</span>
+                  </div>
+                  <span className={`repair-task-state task-${task.state.toLowerCase()}`}>{task.state.replaceAll("_", " ")}</span>
+                  {task.latest_summary && <p>{task.latest_summary}</p>}
+                  {task.commit_sha && <p className="mono">commit {task.commit_sha}</p>}
+                  {task.deployment_ref && <p className="mono">release {task.deployment_ref}</p>}
+                  {task.pr_url && <a className="repair-report-link mono" href={task.pr_url} target="_blank" rel="noreferrer">pull request</a>}
+                  {task.deployment_url && <a className="repair-report-link mono" href={task.deployment_url} target="_blank" rel="noreferrer">deployment</a>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+        {blocker && current.state === "NEEDS_HUMAN" && (
           <section className="repair-report-blocker">
             <div className="repair-report-label">Why it stopped</div>
             <p>{blocker}</p>
@@ -671,7 +715,7 @@ function RepairReport({ repairCase }: { repairCase: RepairCase }) {
             <ul>{risks.map((risk) => <li key={risk}>{risk}</li>)}</ul>
           </section>
         )}
-        {!report && repairCase.latest_summary && <p>{repairCase.latest_summary}</p>}
+        {!report && current.latest_summary && <p>{current.latest_summary}</p>}
       </div>
     </details>
   );
@@ -683,18 +727,15 @@ function RepairActions({ repairCase, prompt }: { repairCase?: RepairCase; prompt
   return (
     <div className="repair-actions">
       {issueUrl ? (
-        <>
-          <a
-            className="casebtn"
-            href={issueUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={(event) => event.stopPropagation()}
-          >
-            open GitHub issue
-          </a>
-          <CopyCaseButton prompt={prompt} secondary />
-        </>
+        <a
+          className="casebtn"
+          href={issueUrl}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(event) => event.stopPropagation()}
+        >
+          open repair issue
+        </a>
       ) : (
         <CopyCaseButton prompt={prompt} />
       )}
@@ -728,6 +769,10 @@ function matchingRepairCase(
       repairCase.source_kind === sourceKind &&
       repairCase.subject_id === normalizedSubjectId &&
       repairCase.selected_date === date,
+  ) ?? cases.find(
+    (repairCase) =>
+      repairCase.source_kind === sourceKind &&
+      repairCase.subject_id === normalizedSubjectId,
   );
 }
 

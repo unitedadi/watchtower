@@ -264,10 +264,63 @@ export interface RepairCase {
   github_issue_url: string | null;
   github_issue_repository: string | null;
   github_issue_number: number | null;
+  recurrence_count: number;
+  route: "watchtower" | "backend" | "checkout" | "multi_repo" | "needs_evidence" | null;
+  route_confidence: "high" | "medium" | "low" | null;
+  route_reason: string | null;
+  diagnosis: RepairDiagnosis | null;
+  approval_state: "pending" | "approved";
+  approved_by: string | null;
+  approved_at: string | null;
+  ship_state: "blocked" | "approved" | "shipped";
+  ship_approved_by: string | null;
+  ship_approved_at: string | null;
+  verification_status: "pending" | "verifying" | "verified" | "gap";
+  verification_result: Record<string, unknown> | null;
   updated_at: string;
 }
 
-export function fetchRepairCase(caseId: string): Promise<{ repair_case: RepairCase }> {
+export interface RepairEvidenceBinding {
+  source: "emitter" | "backend_truth" | "watchtower_reasoning" | "journey";
+  fact: string;
+  receipt: string;
+  repository?: string;
+  path?: string;
+}
+
+export interface RepairDiagnosis {
+  route: NonNullable<RepairCase["route"]>;
+  confidence: NonNullable<RepairCase["route_confidence"]>;
+  reason: string;
+  customer_impact: string;
+  likely_cause: string;
+  owners: Array<"watchtower" | "backend" | "checkout">;
+  evidence_bindings: RepairEvidenceBinding[];
+  repair_plan: string[];
+  verification_plan: string[];
+  proof_gaps: string[];
+}
+
+export interface RepairTask {
+  task_id: string;
+  owner: "watchtower" | "backend" | "checkout";
+  repository: string;
+  state: "QUEUED" | "CLAIMED" | "PATCH_READY" | "SHIP_APPROVED" | "SHIPPING" | "SHIPPED" | "BLOCKED" | "VERIFIED";
+  worktree_path: string | null;
+  branch: string | null;
+  commit_sha: string | null;
+  pr_url: string | null;
+  deployment_url: string | null;
+  deployment_ref: string | null;
+  latest_summary: string | null;
+}
+
+export interface RepairCaseDetail {
+  repair_case: RepairCase;
+  repair_tasks: RepairTask[];
+}
+
+export function fetchRepairCase(caseId: string): Promise<RepairCaseDetail> {
   return get(`/telemetry/repair-cases/${encodeURIComponent(caseId)}`);
 }
 

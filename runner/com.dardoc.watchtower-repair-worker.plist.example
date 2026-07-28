@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.dardoc.watchtower-repair-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mini/codex-runner/watchtower/runner/watchtower-repair-service.sh</string>
+    <string>worker</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/mini/codex-runner/watchtower</string>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/mini/codex-runner/logs/watchtower-repair-worker.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/mini/codex-runner/logs/watchtower-repair-worker.error.log</string>
+</dict>
+</plist>

@@ -16,13 +16,16 @@ for the organization.
 
 Watchtower is the evidence source. Every distinct non-green promise or hard
 failure is linked to one durable issue in the private GitHub repository that
-owns the customer surface. Repeated observations update that issue instead of
-creating duplicates. Use **open GitHub issue** to investigate and fix it;
-**copy case** remains available as a fallback.
+observed the customer problem. Repeated observations update that issue instead
+of creating duplicates. RealBackend holds the linked Repair Case, and the
+always-on Mac mini diagnoses across the product, backend, and Watchtower before
+assigning ownership.
 
-There is no WhatsApp notifier or always-on repair worker. A merge or deploy
-does not close the issue. Watchtower closes it only after independent clean
-evidence satisfies the recovery contract.
+GitHub is the approval surface: `/repair approve` permits scoped worktrees,
+tests, and local commits; `/repair ship` separately permits only configured
+release adapters. A merge or deploy does not close the issue. Watchtower
+closes it only after independent clean evidence satisfies the recovery
+contract. See [the repair orchestrator guide](docs/repair-orchestrator.md).
 
 ## Running
 
