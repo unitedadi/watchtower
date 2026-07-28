@@ -91,6 +91,7 @@ writeFileSync(output, JSON.stringify({
   chmodSync(fakeCodex, 0o755);
 
   let parentClaimed = false;
+  let parentClaimBody = null;
   let diagnosis = null;
   const { server, base } = await listen(async (request, response) => {
     let raw = "";
@@ -102,6 +103,7 @@ writeFileSync(output, JSON.stringify({
     }
     if (request.url === "/telemetry/repair-worker/claim" && !parentClaimed) {
       parentClaimed = true;
+      parentClaimBody = body;
       response.setHeader("content-type", "application/json");
       return response.end(JSON.stringify({
         lease_token: "l".repeat(64),
@@ -132,12 +134,14 @@ writeFileSync(output, JSON.stringify({
       WATCHTOWER_REPAIR_CODEX_BIN: fakeCodex,
       WATCHTOWER_REPAIR_CODEX_MODEL: "gpt-5.5",
       WATCHTOWER_REPAIR_CODEX_REASONING_EFFORT: "xhigh",
+      WATCHTOWER_REPAIR_CASE_ID: "WT-20380101-DIAGNOSE",
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "worker.lock"),
       WATCHTOWER_REPAIR_SKIP_SYNC: "true",
       FAKE_CODEX_LOG: reportLog,
     });
     assert.equal(result.code, 0, result.stderr);
+    assert.equal(parentClaimBody.case_id, "WT-20380101-DIAGNOSE");
     assert.equal(diagnosis.diagnosis.route, "needs_evidence");
     const args = JSON.parse(readFileSync(reportLog, "utf8"));
     assert.deepEqual(args.slice(0, 4), ["exec", "--sandbox", "read-only", "--ephemeral"]);
@@ -205,6 +209,7 @@ writeFileSync(output, JSON.stringify({
   chmodSync(fakeCodex, 0o755);
 
   let taskClaimed = false;
+  let taskClaimBody = null;
   let completion = null;
   const { server, base } = await listen(async (request, response) => {
     let raw = "";
@@ -220,6 +225,7 @@ writeFileSync(output, JSON.stringify({
     }
     if (request.url === "/telemetry/repair-worker/tasks/claim" && !taskClaimed) {
       taskClaimed = true;
+      taskClaimBody = body;
       response.setHeader("content-type", "application/json");
       return response.end(JSON.stringify({
         lease_token: "t".repeat(64),
@@ -262,8 +268,10 @@ writeFileSync(output, JSON.stringify({
       WATCHTOWER_REPAIR_RUN_ROOT: join(root, "runs"),
       WATCHTOWER_REPAIR_LOCK_PATH: join(root, "worker.lock"),
       WATCHTOWER_REPAIR_SKIP_SYNC: "true",
+      WATCHTOWER_REPAIR_TASK_ID: "WT-20380101-PATCH-1-backend",
     });
     assert.equal(result.code, 0, result.stderr);
+    assert.equal(taskClaimBody.task_id, "WT-20380101-PATCH-1-backend");
     assert.equal(completion.outcome, "PATCH_READY");
     assert.match(completion.worktree_path, /worktrees\/backend$/);
     assert.match(completion.branch, /^codex\//);

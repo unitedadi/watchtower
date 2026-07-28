@@ -789,6 +789,9 @@ export async function runWorker(env = process.env) {
     const parentClaim = await apiRequest(env, "/telemetry/repair-worker/claim", {
       worker_id: workerId,
       lease_seconds: 1800,
+      ...(env.WATCHTOWER_REPAIR_CASE_ID
+        ? { case_id: env.WATCHTOWER_REPAIR_CASE_ID }
+        : {}),
     });
     if (parentClaim) {
       const runDir = join(env.WATCHTOWER_REPAIR_RUN_ROOT || DEFAULT_RUN_ROOT, parentClaim.repair_case.case_id);
@@ -809,6 +812,9 @@ export async function runWorker(env = process.env) {
     const taskClaim = await apiRequest(env, "/telemetry/repair-worker/tasks/claim", {
       worker_id: workerId,
       lease_seconds: 3600,
+      ...(env.WATCHTOWER_REPAIR_TASK_ID
+        ? { task_id: env.WATCHTOWER_REPAIR_TASK_ID }
+        : {}),
     });
     if (!taskClaim) {
       await flushGitHubOutbox(env);
