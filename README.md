@@ -1,5 +1,10 @@
 # DarDoc Watchtower
 
+> **Retired on 2026-08-08.** This repository preserves the original
+> promise-classifier dashboard and autonomous repair experiment for historical
+> reference. It is archived and must not be deployed or restarted. See
+> [the retirement record](docs/RETIREMENT.md).
+
 The org-wide health dashboard over client telemetry. Every fetch, click, and
 business outcome from DarDoc's apps is judged green / yellow / red by the
 backend classifier; Watchtower is the view for reviewing it — per project and
